@@ -16,7 +16,9 @@
   --radius: 14px;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html { background: #0f1f3d; }
 html, body { margin: 0; padding: 0; }
+[data-theme="dark"] html { background: #0e1420; }
 
 /* Splash screen */
 #splash {
@@ -31,9 +33,9 @@ html, body { margin: 0; padding: 0; }
   width: 120px; height: 120px;
   animation: splash-bag-in .6s ease-out both;
 }
-.splash-arrow { width: 160px; height: 48px; margin: 8px auto 0; display: block; }
+.splash-arrow { width: 170px; height: 54px; margin: 8px auto 0; display: block; }
 .splash-arrow .draw-arrow {
-  stroke-dasharray: 220; stroke-dashoffset: 220;
+  stroke-dasharray: 240; stroke-dashoffset: 240;
   animation: splash-draw .7s ease-out .5s forwards;
 }
 .splash-arrow .arrow-head { opacity: 0; animation: splash-fade .3s ease-out 1.1s forwards; }
@@ -67,6 +69,7 @@ body {
 #app-header {
   position: sticky; top: 0; z-index: 50;
   background: var(--navy); color: #fff;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
   padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
   display: flex; justify-content: space-between; align-items: center;
 }
@@ -193,7 +196,6 @@ table.plain th { color: var(--muted); font-weight: 600; font-size: 12px; }
   padding: 10px 12px; font-size: 13px; margin: 8px 0; }
 .stars { font-size: 28px; letter-spacing: 4px; cursor: pointer; user-select: none; -webkit-user-select: none; }
 .stars span { color: #d5dbe7; padding: 4px; display: inline-block; }
-.stars span { color: #d5dbe7; }
 .stars span.on { color: var(--accent); }
 .empty-state { text-align: center; padding: 36px 18px; color: var(--muted); }
 .empty-state .big { font-size: 40px; margin-bottom: 8px; }
@@ -238,6 +240,7 @@ table.plain th { color: var(--muted); font-weight: 600; font-size: 12px; }
 [data-theme="dark"] .travel-block { background: #1a2438; }
 [data-theme="dark"] .travel-block.impossible { background: #331a1a; }
 [data-theme="dark"] .stars span { color: #3a4763; }
+[data-theme="dark"] .stars span.on { color: var(--accent); }
 [data-theme="dark"] .progress { background: #2b3650; }
 [data-theme="dark"] .accordion .acc-body a, [data-theme="dark"] .drawer-body a { color: #9cc0ff; }
 [data-theme="dark"] #toast { background: #e9edf5; color: #16233f; }

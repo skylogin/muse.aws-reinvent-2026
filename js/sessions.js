@@ -248,39 +248,48 @@ Sessions.openFilterSheet = function () {
   const types = [...new Set(Sessions.all().map((s) => s.session_type).filter(Boolean))].sort();
   const topics = (window.APP_DATA.topics.topics || []);
   const dates = [...new Set(Sessions.all().map((s) => s.date).filter(Boolean))].sort();
-  const sel = (id, opts, val, label) => `
-    <label class="field">${label}</label>
-    <select id="${id}"><option value="">전체</option>
-    ${opts.map((o) => `<option value="${esc(o)}"${String(o) === String(val) ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+  const chipGroup = (key, opts, val, labelFn) => `
+    <label class="field">${{ date: "날짜", venue: "베뉴", type: "타입", level: "레벨", topic: "토픽" }[key]}</label>
+    <div class="chip-row" data-fkey="${key}" style="margin-bottom:12px;">
+      <button class="chip${!val ? " on" : ""}" data-v="">전체</button>
+      ${opts.map((o) => {
+        const v = typeof o === "object" ? o.v : o;
+        const t = typeof o === "object" ? o.t : (labelFn ? labelFn(o) : o);
+        return `<button class="chip${String(v) === String(val) ? " on" : ""}" data-v="${esc(v)}">${esc(t)}</button>`;
+      }).join("")}
+    </div>`;
 
   openModal(`
     <h2>세션 필터</h2>
-    ${sel("ff-date", dates.map((d) => ({ v: d, t: dayLabel(d) })), Sessions.f.date, "날짜")}
-    ${sel("ff-venue", venues, Sessions.f.venue, "베뉴")}
-    ${sel("ff-type", types, Sessions.f.type, "타입")}
-    ${sel("ff-level", ["100", "200", "300", "400"], Sessions.f.level, "레벨")}
-    ${sel("ff-topic", topics, Sessions.f.topic, "토픽")}
-    <div style="display:flex;gap:8px;margin-top:16px;">
+    ${chipGroup("date", dates.map((d) => ({ v: d, t: dayLabel(d) })), Sessions.f.date)}
+    ${chipGroup("venue", venues, Sessions.f.venue)}
+    ${chipGroup("type", types, Sessions.f.type)}
+    ${chipGroup("level", ["100", "200", "300", "400"], Sessions.f.level)}
+    ${chipGroup("topic", topics, Sessions.f.topic)}
+    <div style="display:flex;gap:8px;margin-top:8px;">
       <button class="btn ghost block" id="ff-reset">초기화</button>
-      <button class="btn block" id="ff-apply">적용</button>
+      <button class="btn block" id="ff-close">닫기</button>
     </div>`);
-  // Fix date select to show labels
-  const dateSel = $("#ff-date");
-  if (dateSel) {
-    dateSel.innerHTML = `<option value="">전체</option>` + dates.map((d) => `<option value="${d}"${d === Sessions.f.date ? " selected" : ""}>${dayLabel(d)}</option>`).join("");
-  }
-  $("#ff-apply").onclick = () => {
-    Sessions.f.date = $("#ff-date").value;
-    Sessions.f.venue = $("#ff-venue").value;
-    Sessions.f.type = $("#ff-type").value;
-    Sessions.f.level = $("#ff-level").value;
-    Sessions.f.topic = $("#ff-topic").value;
-    closeModal(); Views.sessions();
-  };
+
+  // Chip click: single-select per group, apply immediately
+  $$("#modal-root [data-fkey]").forEach((group) => {
+    const key = group.dataset.fkey;
+    group.querySelectorAll(".chip").forEach((chip) => {
+      chip.onclick = () => {
+        Sessions.f[key] = chip.dataset.v;
+        group.querySelectorAll(".chip").forEach((c) => c.classList.toggle("on", c === chip));
+        Views.sessions();
+        // Keep sheet open: rebind FAB since view re-rendered
+        const fab = $("#ss-filter-fab");
+        if (fab) fab.onclick = () => Sessions.openFilterSheet();
+      };
+    });
+  });
   $("#ff-reset").onclick = () => {
     Sessions.f = { date: "", venue: "", type: "", level: "", topic: "", format: "", delivery: "" };
     closeModal(); Views.sessions();
   };
+  $("#ff-close").onclick = closeModal;
 };
 
 function bindHitCards() {
