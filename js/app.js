@@ -584,6 +584,13 @@ const Packing = {  defaults() {
 
 /* ---------- boot ---------- */
 document.addEventListener("DOMContentLoaded", () => {
+  // Splash screen animation
+  const splash = $("#splash");
+  if (splash) {
+    setTimeout(() => splash.classList.add("zoom"), 1700);
+    setTimeout(() => splash.classList.add("hide"), 2100);
+    setTimeout(() => splash.remove(), 2600);
+  }
   Store.load();
   applyTheme();
   Notify.start();

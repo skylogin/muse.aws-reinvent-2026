@@ -153,10 +153,10 @@ const Planner = {
     blocks.forEach((b) => {
       const top = b.s - START;
       const hgt = Math.max(b.e - b.s, 46);
-      // 카드 덱 스타일: 겹치는 블록은 살짝씩 어긋나게 겹쳐 표시 (구글 캘린더식)
-      const OFFSET = 18;
-      const left = `calc(${GUTTER + b.col * OFFSET}px)`;
-      const width = `calc(100% - ${GUTTER + b.col * OFFSET}px - 4px)`;
+      // 겹치는 블록은 가로로 나란히 배치 (시간표식)
+      const colW = `(100% - ${GUTTER}px - 4px) / ${b.cols}`;
+      const left = `calc(${GUTTER}px + ${colW} * ${b.col})`;
+      const width = `calc(${colW} - 4px)`;
       const z = 1 + b.col;
       const isFixed = b.it.kind === "fixed";
       const vStyle = this.venueBlockStyle(b.it.venue, isFixed);
@@ -236,6 +236,7 @@ const Planner = {
 
     // session
     const n = S().session_notes[id] || { rating: 0, memo: "" };
+    const res = (S().reservations[id] || {}).status || "none";
     const kst = kstRange(it.date, it.start_time, it.end_time);
     openModal(`
       <h2 style="padding-right:8px;">${esc(it.title || "세션")}</h2>
@@ -245,7 +246,11 @@ const Planner = {
         ${it.venue ? `<br>📍 ${esc(it.venue)}${it.room ? " · " + esc(it.room) : ""}` : ""}
         ${it.code ? `<br><span class="badge">${esc(it.code)}</span>` : ""}
       </div>
-      <label class="field">별점</label>
+      <label class="field">예약 상태</label>
+      <div class="chip-row" id="pi-res">
+        ${["reserved", "waitlist", "none"].map((v) => `<button class="chip${res === v ? " on" : ""}" data-v="${v}">${v === "reserved" ? "예약됨" : v === "waitlist" ? "대기" : "미예약"}</button>`).join("")}
+      </div>
+      <label class="field" style="margin-top:12px;">별점</label>
       <div class="stars" id="pi-stars">${[1, 2, 3, 4, 5].map((i) => `<span data-s="${i}" class="${i <= n.rating ? "on" : ""}">★</span>`).join("")}</div>
       <label class="field">메모</label>
       <textarea id="pi-memo" rows="3" placeholder="배운 점, 후속 액션 등">${esc(n.memo)}</textarea>
@@ -253,9 +258,19 @@ const Planner = {
       <button class="btn ghost block" id="pi-unfav">일정에서 빼기</button>
       <button class="btn ghost block" id="pi-close">닫기</button>`);
     let rating = n.rating;
-    $$("#pi-stars span").forEach((sp) => sp.onclick = () => {
-      rating = Number(sp.dataset.s);
+    $$("#pi-res .chip").forEach((c) => c.onclick = () => {
+      S().reservations[id] = { status: c.dataset.v, updated_at: new Date().toISOString() };
+      Store.save();
+      $$("#pi-res .chip").forEach((x) => x.classList.toggle("on", x === c));
+      toast(c.dataset.v === "reserved" ? "예약됨으로 표시했어요" : c.dataset.v === "waitlist" ? "대기로 표시했어요" : "미예약으로 표시했어요");
+    });
+    const paintPiStars = () => {
       $$("#pi-stars span").forEach((x) => x.classList.toggle("on", Number(x.dataset.s) <= rating));
+    };
+    $$("#pi-stars span").forEach((sp) => {
+      const setPi = (e) => { e.preventDefault(); rating = Number(sp.dataset.s); paintPiStars(); };
+      sp.addEventListener("click", setPi);
+      sp.addEventListener("touchstart", setPi, { passive: false });
     });
     $("#pi-save").onclick = () => {
       S().session_notes[id] = { rating, memo: $("#pi-memo").value.trim(), updated_at: new Date().toISOString() };
@@ -281,9 +296,13 @@ const Planner = {
       <button class="btn block" id="nt-save">저장</button>
       <button class="btn ghost block" id="nt-cancel">닫기</button>`);
     let rating = n.rating;
-    $$("#nt-stars span").forEach((sp) => sp.onclick = () => {
-      rating = Number(sp.dataset.s);
+    const paintNtStars = () => {
       $$("#nt-stars span").forEach((x) => x.classList.toggle("on", Number(x.dataset.s) <= rating));
+    };
+    $$("#nt-stars span").forEach((sp) => {
+      const setNt = (e) => { e.preventDefault(); rating = Number(sp.dataset.s); paintNtStars(); };
+      sp.addEventListener("click", setNt);
+      sp.addEventListener("touchstart", setNt, { passive: false });
     });
     $("#nt-save").onclick = () => {
       S().session_notes[id] = { rating, memo: $("#nt-memo").value.trim(), updated_at: new Date().toISOString() };

@@ -123,7 +123,6 @@ const Sessions = {
     const s = this.all().find((x) => x.session_id === id);
     if (!s) return;
     const fav = S().favorites.includes(id);
-    const res = (S().reservations[id] || {}).status || "none";
     const fmtMap = { lecture: "이론", "hands-on": "실습", lab: "랩", discussion: "토론형" };
     const delMap = { "in-person": "현장만", livestream: "라이브스트림", recorded: "다시보기" };
     openModal(`
@@ -147,15 +146,10 @@ const Sessions = {
       ${s.prerequisites ? `<div class="kv"><span>사전 준비물</span><b>${esc(s.prerequisites)}</b></div>` : ""}
       ${s.swag ? `<div class="kv"><span>🎁 기념품</span><b>${esc(s.swag)}</b></div>` : ""}
       ${s.language ? `<div class="kv"><span>언어</span><b>${esc(s.language)}${s.caption_translation ? " · " + esc(s.caption_translation) : ""}</b></div>` : ""}
-      <h3>예약 상태 (직접 표시)</h3>
-      <div class="chip-row" id="d-res">
-        ${["reserved", "waitlist", "none"].map((v) => `<button class="chip${res === v ? " on" : ""}" data-v="${v}">${v === "reserved" ? "예약됨" : v === "waitlist" ? "대기" : "미예약"}</button>`).join("")}
-      </div>
       ${((s.catalog_url || APP_DATA.catalog_url)) ? `<a class="btn ghost block" href="${esc(s.catalog_url || APP_DATA.catalog_url)}" target="_blank" rel="noopener">공식 카탈로그에서 상세 보기</a>` : ""}
       <a class="btn accent block" href="https://registration.awsevents.com/" target="_blank" rel="noopener">AWS Events 앱에서 예약하기</a>
       <button class="btn ghost block" id="d-close">닫기</button>`);
     $("#d-fav").onclick = (e) => { e.stopPropagation(); closeModal(); this.toggleFav(id); };
-    $$("#d-res .chip").forEach((c) => c.onclick = () => { closeModal(); this.setReservation(id, c.dataset.v); });
     $("#d-close").onclick = closeModal;
   },
 
@@ -230,35 +224,63 @@ Views.sessions = function () {
   }
 
   const list = Sessions.filtered();
-  const venues = [...new Set(Sessions.all().map((s) => s.venue).filter(Boolean))].sort();
-  const types = [...new Set(Sessions.all().map((s) => s.session_type).filter(Boolean))].sort();
-  const topics = (window.APP_DATA.topics.topics || []);
-  const dates = [...new Set(Sessions.all().map((s) => s.date).filter(Boolean))].sort();
-  const sel = (id, opts, val, label) => `
-    <select id="${id}"><option value="">${label}</option>
-    ${opts.map((o) => `<option value="${esc(o)}"${String(o) === String(val) ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+  const activeFilterCount = Object.values(Sessions.f).filter((v) => v).length;
 
   let body = "";
   if (Sessions.mode === "term") {
     body = Sessions.termBodyHTML();
   } else {
     body = `
-      <div class="row">
-        <div>${sel("f-date", dates, Sessions.f.date, "날짜")}</div>
-        <div>${sel("f-venue", venues, Sessions.f.venue, "베뉴")}</div>
-      </div>
-      <div class="row">
-        <div>${sel("f-type", types, Sessions.f.type, "타입")}</div>
-        <div>${sel("f-level", ["100", "200", "300", "400"], Sessions.f.level, "레벨")}</div>
-      </div>
-      <div class="row"><div>${sel("f-topic", topics, Sessions.f.topic, "토픽")}</div></div>
-      <div class="muted" style="margin:4px 0 8px;">${list.length}개 세션${Sessions.venueGroup ? " · 베뉴별" : ""}</div>
-      ${Sessions.venueGroup ? Sessions.groupedByVenueHTML(list) : list.slice(0, 200).map((s) => Sessions.cardHTML(s)).join("") || `<div class="empty-state">조건에 맞는 세션이 없어요</div>`}`;
+      <div class="muted" style="margin:4px 0 8px;">${list.length}개 세션${Sessions.venueGroup ? " · 베뉴별" : ""}${activeFilterCount ? ` · 필터 ${activeFilterCount}개` : ""}</div>
+      ${Sessions.venueGroup ? Sessions.groupedByVenueHTML(list) : list.slice(0, 200).map((s) => Sessions.cardHTML(s)).join("") || `<div class="empty-state">조건에 맞는 세션이 없어요</div>`}
+      <button id="ss-filter-fab" class="fab" aria-label="필터">🔍${activeFilterCount ? `<span class="fab-badge">${activeFilterCount}</span>` : ""}</button>`;
   }
 
   el.innerHTML = `${modeBtns}${searchBox}${body}`;
   bindSessionChrome();
   bindHitCards();
+  const fab = $("#ss-filter-fab");
+  if (fab) fab.onclick = () => Sessions.openFilterSheet();
+};
+
+Sessions.openFilterSheet = function () {
+  const venues = [...new Set(Sessions.all().map((s) => s.venue).filter(Boolean))].sort();
+  const types = [...new Set(Sessions.all().map((s) => s.session_type).filter(Boolean))].sort();
+  const topics = (window.APP_DATA.topics.topics || []);
+  const dates = [...new Set(Sessions.all().map((s) => s.date).filter(Boolean))].sort();
+  const sel = (id, opts, val, label) => `
+    <label class="field">${label}</label>
+    <select id="${id}"><option value="">전체</option>
+    ${opts.map((o) => `<option value="${esc(o)}"${String(o) === String(val) ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+
+  openModal(`
+    <h2>세션 필터</h2>
+    ${sel("ff-date", dates.map((d) => ({ v: d, t: dayLabel(d) })), Sessions.f.date, "날짜")}
+    ${sel("ff-venue", venues, Sessions.f.venue, "베뉴")}
+    ${sel("ff-type", types, Sessions.f.type, "타입")}
+    ${sel("ff-level", ["100", "200", "300", "400"], Sessions.f.level, "레벨")}
+    ${sel("ff-topic", topics, Sessions.f.topic, "토픽")}
+    <div style="display:flex;gap:8px;margin-top:16px;">
+      <button class="btn ghost block" id="ff-reset">초기화</button>
+      <button class="btn block" id="ff-apply">적용</button>
+    </div>`);
+  // Fix date select to show labels
+  const dateSel = $("#ff-date");
+  if (dateSel) {
+    dateSel.innerHTML = `<option value="">전체</option>` + dates.map((d) => `<option value="${d}"${d === Sessions.f.date ? " selected" : ""}>${dayLabel(d)}</option>`).join("");
+  }
+  $("#ff-apply").onclick = () => {
+    Sessions.f.date = $("#ff-date").value;
+    Sessions.f.venue = $("#ff-venue").value;
+    Sessions.f.type = $("#ff-type").value;
+    Sessions.f.level = $("#ff-level").value;
+    Sessions.f.topic = $("#ff-topic").value;
+    closeModal(); Views.sessions();
+  };
+  $("#ff-reset").onclick = () => {
+    Sessions.f = { date: "", venue: "", type: "", level: "", topic: "", format: "", delivery: "" };
+    closeModal(); Views.sessions();
+  };
 };
 
 function bindHitCards() {
