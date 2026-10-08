@@ -26,11 +26,22 @@ const VENUE_COLORS = [
 const FIXED_COLOR = ["#f1f5f9", "#94a3b8", "#2a3444", "#64748b"];
 
 const Planner = {
+  venueColorIdx(venue) {
+    if (!venue) return -1;
+    const v = venue.toLowerCase();
+    if (v.includes("caesars forum")) return 0;
+    if (v.includes("caesars palace")) return 1;
+    if (v.includes("mgm")) return 3;
+    if (v.includes("venetian")) return 4;
+    if (v.includes("wynn")) return 5;
+    if (v.includes("encore")) return 2;
+    return -1;
+  },
   venueBlockStyle(venue, isFixed) {
     const dark = document.documentElement.dataset.theme === "dark";
     let c = FIXED_COLOR;
     if (!isFixed) {
-      const idx = VENUES.indexOf(venue);
+      const idx = this.venueColorIdx(venue);
       if (idx >= 0) c = VENUE_COLORS[idx];
     }
     const bg = dark ? c[2] : c[0], border = dark ? c[3] : c[1];

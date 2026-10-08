@@ -4,6 +4,7 @@
 const Sessions = {
   q: "", f: { date: "", venue: "", type: "", level: "", topic: "", format: "", delivery: "" },
   mode: "session", // session | term
+  venueGroup: false, // 베뉴별 모아보기
 
   all() { return allSessions(); },
   pending() { return sessionsPending(); },
@@ -36,18 +37,80 @@ const Sessions = {
         st.daily_plan[d] = (st.daily_plan[d] || []).filter((x) => x.session_id !== id);
       });
       toast("관심 해제했어요");
+      Store.save();
+      Views.sessions();
     } else {
-      st.favorites.push(id);
       const s = this.all().find((x) => x.session_id === id);
-      if (s && s.date) {
-        st.daily_plan[s.date] = st.daily_plan[s.date] || [];
-        if (!st.daily_plan[s.date].some((x) => x.session_id === id))
-          st.daily_plan[s.date].push({ session_id: id, note: "" });
-        toast("내 일정에 담았어요 📅");
-      } else toast("관심 세션에 담았어요");
+      const c = s ? this.findConflict(s) : null;
+      if (c) {
+        openModal(`
+          <h2>⚠️ 시간이 겹쳐요</h2>
+          <p><strong>${esc(s.title)}</strong><br>
+          <span class="muted" style="font-size:13px;">${s.date ? esc(dayLabel(s.date)) + " " : ""}${esc(s.start_time || "")}${s.end_time ? "–" + esc(s.end_time) : ""} · ${esc(s.venue || "")}</span></p>
+          <p style="font-size:14px;">이미 담은 일정과 겹칩니다:</p>
+          <div class="card" style="margin:8px 0;"><strong>${esc(c.title)}</strong><br>
+          <span class="muted" style="font-size:13px;">${esc(c.start_time || "")}${c.end_time ? "–" + esc(c.end_time) : ""} · ${esc(c.venue || "")}</span></div>
+          <button class="btn block" id="cf-yes">그래도 담기</button>
+          <button class="btn ghost block" id="cf-no">취소</button>`);
+        $("#cf-yes").onclick = () => { this.doFavAdd(id); closeModal(); };
+        $("#cf-no").onclick = closeModal;
+        return;
+      }
+      this.doFavAdd(id);
     }
+  },
+
+  doFavAdd(id) {
+    const st = S();
+    if (!st.favorites.includes(id)) st.favorites.push(id);
+    const s = this.all().find((x) => x.session_id === id);
+    if (s && s.date) {
+      st.daily_plan[s.date] = st.daily_plan[s.date] || [];
+      if (!st.daily_plan[s.date].some((x) => x.session_id === id))
+        st.daily_plan[s.date].push({ session_id: id, note: "" });
+      toast("내 일정에 담았어요 📅");
+    } else toast("관심 세션에 담았어요");
     Store.save();
     Views.sessions();
+  },
+
+  findConflict(s) {
+    if (!s || !s.date || !s.start_time) return null;
+    const toMin = (t) => { if (!t) return null; const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+    const s0 = toMin(s.start_time);
+    const s1 = toMin(s.end_time) || s0 + 60;
+    for (const x of (S().daily_plan[s.date] || [])) {
+      if (x.session_id === s.session_id) continue;
+      const o = this.all().find((y) => y.session_id === x.session_id);
+      if (!o || !o.start_time) continue;
+      const o0 = toMin(o.start_time);
+      const o1 = toMin(o.end_time) || o0 + 60;
+      if (s0 < o1 && o0 < s1) return o;
+    }
+    return null;
+  },
+
+  cardHTML(s) {
+    const fav = S().favorites.includes(s.session_id);
+    return `<div class="card session-card" data-id="${esc(s.session_id)}">
+      <button class="fav-btn ${fav ? "on" : ""}" data-fav="${esc(s.session_id)}">${fav ? "⭐" : "☆"}</button>
+      <strong>${esc(s.title)}</strong>
+      <div class="meta">${esc(s.code || "")} · ${s.date ? esc(dayLabel(s.date)) : ""} ${esc(s.start_time || "")}${s.end_time ? "–" + esc(s.end_time) : ""}<br>📍 ${esc(s.venue || "")}${s.room ? " · " + esc(s.room) : ""}</div>
+    </div>`;
+  },
+
+  groupedByVenueHTML(list) {
+    if (!list.length) return `<div class="empty-state">조건에 맞는 세션이 없어요</div>`;
+    const groups = {};
+    list.forEach((s) => {
+      const v = s.venue || "장소 미정";
+      (groups[v] = groups[v] || []).push(s);
+    });
+    const ordered = [...VENUES.filter((v) => groups[v]), ...Object.keys(groups).filter((v) => !VENUES.includes(v)).sort()];
+    return ordered.map((v) => `
+      <h3 style="margin:14px 0 6px;">📍 ${esc(v)} <span class="muted" style="font-size:12px;font-weight:400;">${groups[v].length}개</span></h3>
+      ${groups[v].slice(0, 100).map((s) => this.cardHTML(s)).join("")}
+    `).join("");
   },
 
   setReservation(id, status) {
@@ -149,6 +212,7 @@ Views.sessions = function () {
     <div class="chip-row">
       <button class="chip${Sessions.mode === "session" ? " on" : ""}" data-m="session">세션</button>
       <button class="chip${Sessions.mode === "term" ? " on" : ""}" data-m="term">용어</button>
+      ${Sessions.mode === "session" ? `<button class="chip${Sessions.venueGroup ? " on" : ""}" id="ss-venue-group">📍 베뉴별</button>` : ""}
     </div>`;
   const searchBox = `<input type="text" id="ss-q" placeholder="${Sessions.mode === "term" ? "용어 검색 (예: 셔틀, ESTA, re:Play)" : "세션 검색 (제목·코드·연사)"}" value="${esc(Sessions.q)}">`;
 
@@ -188,15 +252,8 @@ Views.sessions = function () {
         <div>${sel("f-level", ["100", "200", "300", "400"], Sessions.f.level, "레벨")}</div>
       </div>
       <div class="row"><div>${sel("f-topic", topics, Sessions.f.topic, "토픽")}</div></div>
-      <div class="muted" style="margin:4px 0 8px;">${list.length}개 세션</div>
-      ${list.slice(0, 200).map((s) => {
-        const fav = S().favorites.includes(s.session_id);
-        return `<div class="card session-card" data-id="${esc(s.session_id)}">
-          <button class="fav-btn ${fav ? "on" : ""}" data-fav="${esc(s.session_id)}">${fav ? "⭐" : "☆"}</button>
-          <strong>${esc(s.title)}</strong>
-          <div class="meta">${esc(s.code || "")} · ${s.date ? esc(dayLabel(s.date)) : ""} ${esc(s.start_time || "")}${s.end_time ? "–" + esc(s.end_time) : ""}<br>📍 ${esc(s.venue || "")}${s.room ? " · " + esc(s.room) : ""}</div>
-        </div>`;
-      }).join("") || `<div class="empty-state">조건에 맞는 세션이 없어요</div>`}`;
+      <div class="muted" style="margin:4px 0 8px;">${list.length}개 세션${Sessions.venueGroup ? " · 베뉴별" : ""}</div>
+      ${Sessions.venueGroup ? Sessions.groupedByVenueHTML(list) : list.slice(0, 200).map((s) => Sessions.cardHTML(s)).join("") || `<div class="empty-state">조건에 맞는 세션이 없어요</div>`}`;
   }
 
   el.innerHTML = `${modeBtns}${searchBox}${body}`;
@@ -222,6 +279,8 @@ function bindHitCards() {
 
 function bindSessionChrome() {
   $$("#view-sessions [data-m]").forEach((b) => b.onclick = () => { Sessions.mode = b.dataset.m; Sessions.q = ""; Views.sessions(); });
+  const vg = $("#ss-venue-group");
+  if (vg) vg.onclick = () => { Sessions.venueGroup = !Sessions.venueGroup; Views.sessions(); };
   const q = $("#ss-q");
   let t;
   q.addEventListener("input", () => { clearTimeout(t); t = setTimeout(() => { Sessions.q = q.value; Views.sessions(); const nq = $("#ss-q"); nq.focus(); nq.setSelectionRange(nq.value.length, nq.value.length); }, 500); });

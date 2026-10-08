@@ -39,6 +39,8 @@ function download(filename, text, mime) {
 /* ---------- time ---------- */
 const EVENT_START = "2026-11-30", EVENT_END = "2026-12-04";
 const WD_KO = ["일", "월", "화", "수", "목", "금", "토"];
+/* 베뉴 (표시 순서) */
+const VENUES = ["Caesars Forum", "Caesars Palace", "Encore", "MGM Grand", "The Venetian", "Wynn"];
 function tzParts(tz, d) {
   const p = new Intl.DateTimeFormat("en-CA", {
     timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
