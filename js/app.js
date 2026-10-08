@@ -97,7 +97,9 @@ function defaultState() {
     install_dismissed: false,
     fx_rate: 1450,
     theme: (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light",
-    mock_sessions: false   // true -> 2025 샘플 세션으로 체험 (테스트용)
+    mock_sessions: false,   // true -> 2025 샘플 세션으로 체험 (테스트용)
+    notify: { on: false, minutes: 15 },  // 관심 세션 시작 알림 (앱이 켜져 있을 때만 동작)
+    weather_cache: null
   };
 }
 const Store = {
@@ -185,6 +187,137 @@ function sessionsPending() {
   return !!(window.APP_DATA.meta && window.APP_DATA.meta.sessions_pending);
 }
 
+/* ---------- session start notifications (while app is open) ---------- */
+const Notify = {
+  timer: null,
+  fired: new Set(),
+  supported() { return ("Notification" in window); },
+  async enable(minutes) {
+    if (!this.supported()) { toast("이 브라우저에서는 알림을 지원하지 않아요"); return false; }
+    let perm = Notification.permission;
+    if (perm === "default") { try { perm = await Notification.requestPermission(); } catch (e) { perm = "denied"; } }
+    if (perm !== "granted") { toast("알림 권한을 허용해 주세요"); return false; }
+    S().notify = { on: true, minutes: minutes || 15 };
+    Store.save();
+    this.start();
+    toast("세션 시작 알림을 켰어요 🔔");
+    return true;
+  },
+  disable() {
+    S().notify.on = false;
+    Store.save();
+    this.stop();
+    toast("세션 시작 알림을 껐어요");
+  },
+  start() {
+    this.stop();
+    if (!(S().notify && S().notify.on)) return;
+    if (!this.supported() || Notification.permission !== "granted") return;
+    this.timer = setInterval(() => this.check(), 60000);
+    this.check();
+  },
+  stop() { if (this.timer) { clearInterval(this.timer); this.timer = null; } },
+  check() {
+    try {
+      const nt = S().notify;
+      if (!(nt && nt.on)) return;
+      if (!this.supported() || Notification.permission !== "granted") return;
+      const today = vegasDateStr();
+      const p = vegasParts();
+      const nowMin = (+p.hour) * 60 + (+p.minute);
+      const lead = nt.minutes || 15;
+      Planner.itemsFor(today).forEach((it) => {
+        const start = it.start || it.start_time;
+        if (!start) return;
+        const id = it.session_id || it.id || it.title;
+        const key = today + "|" + id;
+        if (this.fired.has(key)) return;
+        const diff = Planner.toMin(start) - nowMin;
+        if (diff > 0 && diff <= lead) {
+          this.fired.add(key);
+          new Notification("곧 시작해요 ⏰", {
+            body: `${it.title} · ${start} (${it.venue || "장소 미정"})`,
+            icon: "icons/icon-192.png",
+            tag: key
+          });
+        }
+      });
+    } catch (e) { /* 알림 실패는 조용히 무시 */ }
+  }
+};
+
+/* ---------- weather (Open-Meteo, no key) ---------- */
+const Weather = {
+  icon(code) {
+    if (code === 0) return "☀️";
+    if (code <= 2) return "⛅";
+    if (code === 3) return "☁️";
+    if (code === 45 || code === 48) return "🌫️";
+    if (code >= 51 && code <= 57) return "🌦️";
+    if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return "🌧️";
+    if ((code >= 71 && code <= 77) || code === 85 || code === 86) return "🌨️";
+    if (code >= 95) return "⛈️";
+    return "⛅";
+  },
+  data() {
+    const c = S().weather_cache;
+    return (c && c.data) || null;
+  },
+  iconFor(dateStr) { // "2026-12-01" -> "☀️" (예보 범위 내일 때만)
+    const d = this.data();
+    if (!d || !d.daily || !d.daily.time) return "";
+    const i = d.daily.time.indexOf(dateStr);
+    return i >= 0 ? this.icon(d.daily.weathercode[i]) : "";
+  },
+  async fetch() {
+    const url = "https://api.open-meteo.com/v1/forecast?latitude=36.1699&longitude=-115.1398" +
+      "&current=temperature_2m,weathercode&daily=temperature_2m_max,temperature_2m_min,weathercode" +
+      "&timezone=America%2FLos_Angeles&forecast_days=16";
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("weather " + res.status);
+    return res.json();
+  },
+  async refresh() {
+    const el = $("#home-weather");
+    try {
+      const c = S().weather_cache;
+      const fresh = c && c.data && (Date.now() - c.at < 30 * 60 * 1000);
+      const data = fresh ? c.data : await this.fetch();
+      if (!fresh && data) { S().weather_cache = { at: Date.now(), data }; Store.save(); }
+      if (data && el) {
+        const t = Math.round(data.current.temperature_2m);
+        const mx = Math.round(data.daily.temperature_2m_max[0]);
+        const mn = Math.round(data.daily.temperature_2m_min[0]);
+        el.innerHTML = `${this.icon(data.current.weathercode)} 라스베가스 <strong>${t}°</strong> · 최고 ${mx}° / 최저 ${mn}°`;
+      }
+    } catch (e) { if (el) el.style.display = "none"; }
+  }
+};
+
+/* ---------- install prompt (Android/Chrome) ---------- */
+let deferredPrompt = null;
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const b = $("#install-now");
+  if (b) b.classList.remove("hidden");
+});
+async function doInstallPrompt() {
+  if (!deferredPrompt) { toast("이 기기에서는 자동 설치를 지원하지 않아요"); return; }
+  deferredPrompt.prompt();
+  try {
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === "accepted") {
+      S().install_dismissed = true; Store.save();
+      $("#install-guide").classList.add("hidden");
+      toast("설치가 시작됐어요 📲");
+    }
+  } catch (e) {}
+  deferredPrompt = null;
+  const b = $("#install-now");
+  if (b) b.classList.add("hidden");
+}
+
 /* ---------- install guide (PWA) ---------- */
 function isStandalone() {
   return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
@@ -209,11 +342,17 @@ function maybeShowInstallGuide() {
     <p class="muted">이 앱을 홈 화면에 추가하면 주소창 없이 앱처럼 실행됩니다.</p>
     <ol style="padding-left:20px;font-size:14px;">${how}</ol>
     <div class="notice">설치 후에는 <strong>홈 화면 아이콘</strong>으로 실행해 주세요. (브라우저로 열면 저장된 데이터가 다르게 보일 수 있습니다)</div>
+    <button class="btn accent block hidden" id="install-now">⬇️ 바로 설치하기</button>
     <button class="btn block" id="install-ok">확인</button>
     <button class="btn ghost block" id="install-never">다시 보지 않기</button>
   </div>`;
   $("#install-ok").onclick = () => el.classList.add("hidden");
   $("#install-never").onclick = () => { S().install_dismissed = true; Store.save(); el.classList.add("hidden"); };
+  const inBtn = $("#install-now");
+  if (inBtn) {
+    if (deferredPrompt) inBtn.classList.remove("hidden");
+    inBtn.onclick = doInstallPrompt;
+  }
 }
 
 /* ---------- onboarding ---------- */
@@ -307,6 +446,7 @@ Views.home = function () {
       <div style="font-size:13px;opacity:.85">안녕하세요, ${nick} 👋</div>
       <div style="font-size:30px;font-weight:800;margin:4px 0;">${ddText}</div>
       <div style="font-size:13px;opacity:.85">11/30–12/4 · 라스베가스 (현지 ${fmtDate(vegasParts())})</div>
+      <div id="home-weather" style="font-size:13px;opacity:.85;margin-top:2px;">⛅ 날씨 불러오는 중…</div>
     </div>
     ${pending ? `<div class="notice">📡 세션 카탈로그 수집 대기 중 — 공식 카탈로그에서 수집하면 세션 탭이 활성화됩니다.</div>` : ""}
     ${mockOn ? `<div class="notice">🧪 <strong>2025 샘플 세션</strong>으로 체험 중이에요. 실제 데이터가 아닙니다 — 설정에서 끌 수 있어요.</div>` : ""}
@@ -332,6 +472,11 @@ Views.home = function () {
         <button class="btn ghost small" id="set-theme">🌙 다크모드</button>
         <button class="btn ghost small" id="set-mock">🧪 2025 샘플 세션</button>
       </div>
+      <div class="row" style="margin-top:8px;">
+        <button class="btn ghost small" id="set-notify">${S().notify.on ? "🔕 세션 알림 끄기" : "🔔 세션 알림 켜기"}</button>
+        <select id="set-notify-min" aria-label="알림 시점">${[5, 10, 15, 30].map((m) => `<option value="${m}"${S().notify.minutes === m ? " selected" : ""}>${m}분 전</option>`).join("")}</select>
+      </div>
+      <p class="muted" style="font-size:12px;margin:4px 0 0;">앱이 켜져 있을 때 관심 세션 시작 전에 알려줘요.</p>
     </div>`;
   $$("#view-home [data-go]").forEach((el) => el.onclick = () => switchTab(el.dataset.go));
   $("#set-profile").onclick = Settings.editProfile;
@@ -344,7 +489,19 @@ Views.home = function () {
     toast(S().theme === "dark" ? "다크모드로 바꿨어요 🌙" : "라이트모드로 바꿨어요 ☀️");
   };
   $("#set-mock").onclick = () => Settings.toggleMock();
+  $("#set-notify").onclick = async () => {
+    if (S().notify.on) { Notify.disable(); }
+    else {
+      const minutes = Number(($("#set-notify-min") || {}).value) || 15;
+      const ok = await Notify.enable(minutes);
+      if (!ok) return;
+    }
+    Views.home();
+  };
+  const nmSel = $("#set-notify-min");
+  if (nmSel) nmSel.onchange = () => { S().notify.minutes = Number(nmSel.value) || 15; Store.save(); };
   applyTheme();
+  Weather.refresh();
 };
 
 const Settings = {
@@ -439,6 +596,7 @@ const Packing = {
 document.addEventListener("DOMContentLoaded", () => {
   Store.load();
   applyTheme();
+  Notify.start();
   tickClock();
   setInterval(tickClock, 30000);
   $$("#tabbar button").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));

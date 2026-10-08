@@ -158,7 +158,10 @@ Views.planner = function () {
   if (!DAYS.includes(plannerDay)) plannerDay = "2026-11-30";
   const el = $("#view-planner");
   el.innerHTML = `
-    <div class="day-tabs">${DAYS.map((d) => `<button data-day="${d}" class="${d === plannerDay ? "active" : ""}">${dayLabel(d)}</button>`).join("")}</div>
+    <div class="day-tabs">${DAYS.map((d) => {
+      const w = Weather.iconFor(d);
+      return `<button data-day="${d}" class="${d === plannerDay ? "active" : ""}">${dayLabel(d)}${w ? " " + w : ""}</button>`;
+    }).join("")}</div>
     <div id="pl-timeline">${Planner.renderTimeline(plannerDay)}</div>
     <div class="card"><h3>고정 이벤트 표시</h3>
       ${FIXED_EVENTS.filter((f) => f.date === plannerDay).map((f) => `

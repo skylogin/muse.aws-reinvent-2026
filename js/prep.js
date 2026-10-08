@@ -1,6 +1,15 @@
 /* 사전준비 탭: 내 출장 정보 + 가이드 + 준비물 체크리스트 */
 "use strict";
 
+/* 다녀온 사람들 후기 링크 */
+const REINVENT_REVIEWS = [
+  { title: "NDS 초보자 세션 공략집", desc: "세션 예약 순서·타입별 실전 후기", url: "https://tech.cloud.nongshim.co.kr/blog/aws/3537/" },
+  { title: "SpoonLabs 현장 후기", desc: "핸즈온 주의사항·식사·꿀팁", url: "https://medium.com/spoontech/2025-aws-re-invent-ai-%EB%8C%80%EA%B2%A9%EB%8F%99-%EC%8B%9C%EB%8C%80-2496cd24ed0d" },
+  { title: "re:Invent 2025 뽕뽑기 후기", desc: "호텔·물가·맛집 팁", url: "https://medium.com/@hjinblog/aws-reinvent-2025-%EC%9D%B4%EB%A0%87%EA%B9%8C%EC%A7%80-%EB%BD%95%EC%9D%84-%EB%BD%91%EC%9D%84-%EC%A4%84%EC%9D%80-d8da6519f153" },
+  { title: "re:Invent 생존 가이드 (영문)", desc: "준비물 체크리스트·서바이벌 팁", url: "https://jimmydqv.com/how-to-reinvent-ep-4-packing-and-survival/" },
+  { title: "re:Invent Queens 가이드 (영문)", desc: "다회 참석자들의 실전 팁 모음", url: "https://suzanamelo.com/articles/reinvent-queens-guide/" }
+];
+
 Views.prep = function () {
   const el = $("#view-prep");
   const t = S().trip;
@@ -39,6 +48,12 @@ Views.prep = function () {
     <div class="card"><h3>📖 출장 가이드</h3>
       ${(window.APP_DATA.prep_sections || []).map((s, i) => `
         <button class="btn ghost block left info-btn" data-guide="${i}">📘 ${esc(s.title)}</button>`).join("")}
+    </div>
+
+    <div class="card"><h3>✍️ 다녀온 사람들 후기</h3>
+      <p class="muted" style="font-size:13px;">작년·재작년 참석자들의 실전 팁 모음이에요.</p>
+      ${REINVENT_REVIEWS.map((r) => `
+        <a class="btn ghost block left info-btn" href="${r.url}" target="_blank" rel="noopener">🔗 ${esc(r.title)}<br><span class="muted" style="font-size:12px;font-weight:400;">${esc(r.desc)}</span></a>`).join("")}
     </div>`;
 
   $$("#view-prep [data-guide]").forEach((b) => b.onclick = () => {
