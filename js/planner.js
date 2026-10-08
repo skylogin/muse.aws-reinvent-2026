@@ -54,7 +54,7 @@ const Planner = {
 
   itemsFor(date) {
     const items = [];
-    FIXED_EVENTS.filter((f) => f.date === date && !S().fixed_off.includes(f.id))
+    allFixed().filter((f) => f.date === date && !S().fixed_off.includes(f.id))
       .forEach((f) => {
         const edit = (S().fixed_edits || {})[f.id];
         items.push({ kind: "fixed", ...f, ...(edit || {}) });
@@ -199,7 +199,14 @@ const Planner = {
   },
 
   renderTimetable(date) {
-    const list = this.timedFor(date);
+    const mine = this.timedFor(date);
+    // 동료 일정: 내가 같은 세션을 담았으면 따로 그리지 않고 내 블록에 색 점으로 표시
+    const myIds = new Set(mine.filter((x) => x.it.kind === "session").map((x) => x.it.session_id));
+    const peerList = Share.sessionsFor(date).filter((x) => !myIds.has(x.s.session_id)).map((x) => {
+      const s = this.toMin(x.s.start_time), e = this.toMin(x.s.end_time);
+      return { it: { ...x.s, kind: "peer", peer: x.peer }, s, e: e && e > s ? e : s + 60 };
+    }).filter((x) => x.s != null);
+    const list = mine.concat(peerList).sort((a, b) => a.s - b.s || b.e - a.e);
     const PX = 1.4, PAD = 12, GUTTER = 46; // PX: 1분당 픽셀, PAD: 맨 위·아래 시간 라벨 여백
     if (!list.length) return `<div class="empty-state"><div class="big">🗓️</div><p>이 날의 일정이 비어 있어요.<br>세션 탭에서 관심 세션을 담아보세요.</p>
       <button class="btn ghost small" id="pl-go-sessions">세션 둘러보기</button></div>`;
@@ -209,24 +216,28 @@ const Planner = {
     list.forEach((b) => { START = Math.min(START, Math.floor(b.s / 60) * 60); END = Math.max(END, Math.ceil(b.e / 60) * 60); });
     END = Math.min(END, 24 * 60);
     const y = (min) => Math.round((min - START) * PX) + PAD;
-    const blocks = this.layoutBlocks(list.map((b) => ({ ...b, s: Math.max(b.s, START), e: Math.min(b.e, END) })));
+    // 동료 일정이 있으면 오른쪽 30%를 동료 칸으로 따로 둠 → 내 일정 블록은 동료 때문에 좁아지지 않음
+    const LANE = peerList.length ? 0.3 : 0;
+    const clamp = (arr) => arr.map((b) => ({ ...b, s: Math.max(b.s, START), e: Math.min(b.e, END) }));
+    const lane = (arr, off, k) => this.layoutBlocks(clamp(arr)).map((b) => ({ ...b, lf: off + b.lf * k, wf: b.wf * k }));
+    const blocks = lane(mine, 0, 1 - LANE).concat(LANE ? lane(peerList, 1 - LANE, LANE) : []);
     const trackW = Math.min(window.innerWidth || 390, 520) - 28 - GUTTER - 6; // 글자 줄 수 추정용
-    // 이동 구간 (빈 시간이 좁으면 칩을 앞 일정 아래쪽에 붙이므로 그만큼 글자 영역을 비워 둠)
-    const legs = this.legsFor(date, list);
+    // 이동 구간 (내 일정만 · 빈 시간이 좁으면 칩을 앞 일정 아래쪽에 붙이므로 그만큼 글자 영역을 비워 둠)
+    const legs = this.legsFor(date, mine);
     const reserve = {};
     legs.forEach((l) => {
       if (l.tr.same && l.status === "ok") return;
       if ((Math.min(l.b.s, END) - Math.max(l.a.e, START)) * PX < 28) reserve[this.itemId(l.a.it)] = 26;
     });
 
-    let html = "";
+    let html = LANE ? `<div class="tt-lane" style="left:calc(${GUTTER}px + (100% - ${GUTTER + 6}px) * ${1 - LANE});height:calc(100% - ${PAD}px)"><span>👥 동료</span></div>` : "";
     for (let h = START / 60; h <= END / 60; h++) {
       html += `<div class="tt-hour" style="top:${y(h * 60)}px"><span>${h}:00</span></div>`;
     }
 
     const LT = 17, LM = 15.5; // 제목 줄 높이, 보조 줄 높이
     blocks.forEach((b) => {
-      const it = b.it, isFixed = it.kind === "fixed";
+      const it = b.it, isFixed = it.kind === "fixed", peer = it.kind === "peer" ? it.peer : null;
       const top = y(b.s);
       const hgt = Math.max(Math.round((b.e - b.s) * PX) - 2, 40);
       const left = `calc(${GUTTER}px + (100% - ${GUTTER + 6}px) * ${b.lf.toFixed(4)} + ${b.lp.toFixed(1)}px)`;
@@ -239,7 +250,7 @@ const Planner = {
       const place = [it.venue, room].filter(Boolean).join(" · ");
       // 글자를 그릴 수 있는 높이 (위에 겹친 일정 전까지) → 들어가는 만큼만 표시
       let rest = Math.min(hgt - (reserve[this.itemId(it)] || 0), Math.round((b.textEnd - b.s) * PX) - 2) - 10 - LT;
-      const title = (isFixed ? "📌 " : "") + (it.title || "");
+      const title = (isFixed ? "📌 " : "") + (peer ? `[${peer.name}] ` : "") + (it.title || "");
       const needLines = Math.max(1, Math.ceil(this.measure(title, "700 13px") / Math.max(boxW, 30) * 1.08));
       const kstInline = kst && this.measure(`${time} · 🇰🇷${kst}`, "600 11.5px") <= boxW;
       const show = { time: false, kst: false, place: false, note: false };
@@ -250,9 +261,13 @@ const Planner = {
       if (kst && !kstInline && rest >= LM) { show.kst = true; rest -= LM; }
       if (note && rest >= LM) { show.note = true; rest -= LM; }
       const z = 2 + b.depth * 4 + (b.order % 4);
-      html += `<div class="tt-block${b.depth ? " nested" : ""}${isFixed ? " fixed" : ""}" data-pitem="${esc(this.itemId(it))}"
-        style="top:${top}px;height:${hgt}px;left:${left};width:${width};z-index:${z};${this.venueBlockStyle(it.venue, isFixed)}" role="button" tabindex="0">
-        <div class="tt-title" style="-webkit-line-clamp:${lines}">${esc(title)}</div>
+      const pc = peer ? Share.color(peer) : null;
+      const style = peer ? `--pc:${pc.line};--pbg:${pc.bg};` : this.venueBlockStyle(it.venue, isFixed);
+      const withP = it.kind === "session" ? Share.withPeers(it.session_id, date) : [];
+      html += `<div class="tt-block${b.depth ? " nested" : ""}${isFixed ? " fixed" : ""}${peer ? " peer" : ""}" ${peer ? `data-peeritem="${esc(peer.id + "|" + it.session_id)}"` : `data-pitem="${esc(this.itemId(it))}"`}
+        style="top:${top}px;height:${hgt}px;left:${left};width:${width};z-index:${z};${style}" role="button" tabindex="0">
+        ${withP.length ? `<span class="tt-with" title="${esc(withP.map((p) => p.name).join(", "))}도 담음">${withP.map((p) => Share.dotHTML(p)).join("")}</span>` : ""}
+        <div class="tt-title" style="-webkit-line-clamp:${lines}">${peer ? `<span class="peer-tag">${esc(peer.name)}</span>` : ""}${esc(peer ? it.title : title)}</div>
         ${show.time ? `<div class="tt-time">${esc(time)}${kstInline ? ` <span class="tt-kst">· 🇰🇷${kst}</span>` : ""}</div>` : ""}
         ${show.place ? `<div class="tt-venue">📍 ${esc(place)}</div>` : ""}
         ${show.kst ? `<div class="tt-kst">🇰🇷 ${kst}</div>` : ""}
@@ -279,7 +294,7 @@ const Planner = {
         html += `<button class="tt-travel st-${l.status}" data-leg="${i}" style="top:${Math.round(y(a) + gapPx / 2 - 12)}px;left:${GUTTER + 4}px"><span class="l1">${short}</span></button>`;
       } else {
         // 빈 시간이 거의 없음: 다음 일정 제목을 가리지 않게 앞 일정 아래쪽(비워 둔 자리)에 표시
-        html += `<button class="tt-travel st-${l.status} tail" data-leg="${i}" style="top:${y(a) - 26}px;right:8px"><span class="l1">${short}</span></button>`;
+        html += `<button class="tt-travel st-${l.status} tail" data-leg="${i}" style="top:${y(a) - 26}px;right:calc((100% - ${GUTTER}px) * ${LANE} + 8px)"><span class="l1">${short}</span></button>`;
       }
     });
 
@@ -309,11 +324,25 @@ const Planner = {
       const li = legInto.get(x);
       if (li != null) {
         const l = legs[li];
+        // 이동하고도 1시간 이상 비면 '빈 시간' 행 (11–14시에 걸치면 점심)
+        const free = l.slack;
+        if (free >= 60) {
+          const from = l.a.e, to = l.b.s - l.tr.minutes;
+          const lunch = from < 14 * 60 && to > 11 * 60;
+          const n = Suggest.gapCandidates(date, from, to, l.a.it.venue).length;
+          html += `<button class="route-gap" data-gap="${from}|${to}|${esc(l.a.it.venue || "")}">
+            <span class="rl-ico">${lunch ? "🍽️" : "☕"}</span>
+            <span class="rl-txt"><b>${lunch ? "점심·" : ""}빈 시간 ${this.dur(free)}</b>
+            <span class="rl-sub">${n ? `이 시간에 볼 만한 세션 ${n}개` : "Expo·라운지에서 쉬어 가기"}</span></span>
+            <span class="chev">›</span></button>`;
+        }
+        const alts = l.status !== "ok" && x.it.kind === "session" ? this.routeFixes(l).length : 0;
         html += `<button class="route-leg st-${l.status}" data-leg="${li}">
           <span class="rl-ico">${l.tr.icon}</span>
           <span class="rl-txt"><b>${esc(l.tr.same ? "건물 내 이동" : `${shortVenue(l.a.it.venue)} → ${shortVenue(x.it.venue)}`)} · ${l.tr.minutes}분</b>
           <span class="rl-sub">${esc(l.tr.same ? "같은 베뉴" : l.tr.mode)}${l.tr.km ? ` · ${l.tr.km.toFixed(1)}km` : ""} · ${this.hhmm(l.a.e)} 종료 후</span>
-          <span class="rl-st">${esc(this.legStatusText(l))}${l.status !== "bad" ? ` · ${this.hhmm(l.leaveBy)}까지 출발` : ""}</span></span>
+          <span class="rl-st">${esc(this.legStatusText(l))}${l.status !== "bad" ? ` · ${this.hhmm(l.leaveBy)}까지 출발` : ""}</span>
+          ${alts ? `<span class="rl-sub">💡 더 가까운 대체 세션 ${alts}개</span>` : ""}</span>
           <span class="chev">›</span></button>`;
       }
       const it = x.it, idx = this.venueColorIdx(it.venue);
@@ -326,7 +355,29 @@ const Planner = {
           ${clash ? `<span class="badge danger" style="margin-top:3px;">⚠️ 다른 세션과 시간 겹침</span>` : ""}</span>
       </div>`;
     });
-    return `<div class="route">${html}</div>`;
+    return `${this.lunchWarning(list) ? `<div class="warn-box">🍽️ 11–14시 사이에 30분 이상 빈 시간이 없어요. 점심을 거르기 쉬우니 스낵을 챙기거나 일정을 하나 조정해 보세요.</div>` : ""}
+      <div class="route">${html}</div>`;
+  },
+  /* 점심 시간대(11–14시)에 30분 이상 빈 시간이 없으면 true */
+  lunchWarning(list) {
+    const W0 = 11 * 60, W1 = 14 * 60;
+    const busy = list.filter((x) => x.s < W1 && x.e > W0).map((x) => [Math.max(x.s, W0), Math.min(x.e, W1)]).sort((a, b) => a[0] - b[0]);
+    if (!busy.length) return false;
+    let t = W0, maxFree = 0;
+    busy.forEach(([s, e]) => { maxFree = Math.max(maxFree, s - t); t = Math.max(t, e); });
+    maxFree = Math.max(maxFree, W1 - t);
+    return maxFree < 30;
+  },
+  /* 동선 개선: 다음 세션 대신, 앞 일정 베뉴에서 제시간에 갈 수 있는 비슷한 세션 */
+  routeFixes(l) {
+    const from = l.a.it.venue;
+    return Suggest.alternatives(this.itemId(l.b.it), {
+      near: from, limit: 4,
+      filter: (c) => {
+        const tr = this.travelBetween({ venue: from }, { venue: c.venue });
+        return !!tr && this.toMin(c.start_time) - l.a.e >= tr.minutes;
+      }
+    });
   },
 
   /* ---- 하단 시트: 이동 상세 ---- */
@@ -336,6 +387,7 @@ const Planner = {
     const a = l.a.it, b = l.b.it;
     const stLabel = { ok: "여유 있음", tight: "빠듯함", bad: "시간 부족" }[l.status];
     const sh = (window.APP_DATA.event_info.shuttle || {}).note;
+    const fixes = l.status !== "ok" && b.kind === "session" ? this.routeFixes(l) : [];
     const tips = l.tr.same
       ? "같은 베뉴라도 건물이 넓어 층·구역 이동에 10–15분 걸릴 수 있어요. 방 번호를 미리 확인하세요."
       : l.tr.mode === "도보"
@@ -354,12 +406,16 @@ const Planner = {
         <div class="kv"><span>늦어도 출발</span><b>${this.hhmm(l.leaveBy)}</b></div>
         <div class="kv"><span>상태</span><b class="st-text st-${l.status}">${stLabel} · ${esc(this.legStatusText(l))}</b></div>
         <div class="${l.status === "bad" ? "danger-box" : "notice"}">${l.status === "bad" ? "⚠️ 앞 일정을 일찍 나오거나 다음 세션 시작에 늦을 수 있어요. " : "💡 "}${tips}</div>
-        <p class="muted" style="font-size:12px;margin:6px 0 0;">이동 시간은 베뉴 간 직선거리로 추정한 값이에요. 혼잡 시간엔 더 걸려요.</p>`,
+        <p class="muted" style="font-size:12px;margin:6px 0 0;">이동 시간은 베뉴 간 직선거리로 추정한 값이에요. 혼잡 시간엔 더 걸려요.${b.kind === "session" ? ` 예약석은 세션 시작 10분 전까지 도착해야 유지돼요.` : ""}</p>
+        ${fixes.length ? `<h3 style="margin:16px 0 6px;">💡 동선 개선 제안</h3>
+        <p class="muted" style="font-size:13px;margin:0 0 4px;">'${esc((b.title || "").slice(0, 40))}' 대신, ${esc(a.venue)}에서 제시간에 갈 수 있는 비슷한 세션이에요.</p>
+        ${fixes.map((c) => Suggest.rowHTML(c, { near: a.venue, swap: true, baseId: this.itemId(b) })).join("")}` : ""}`,
       actions: l.tr.same ? `<button class="btn" id="tv-close">확인</button>`
         : `<button class="btn ghost" id="tv-close">닫기</button>
         ${l.tr.maps ? `<a class="btn accent" href="${l.tr.maps}" target="_blank" rel="noopener">🗺️ 구글 지도 길찾기</a>` : `<button class="btn" id="tv-shuttle">🚌 셔틀 정보</button>`}`
     });
     $("#tv-close").onclick = () => $("#modal-overlay")._dismiss();
+    Suggest.bind($(".bs-body"), { baseId: this.itemId(b), swap: true, onDone: () => Views.planner() });
     const shBtn = $("#tv-shuttle");
     if (shBtn) shBtn.onclick = () => { closeModal(); openDrawer("베뉴 간 셔틀", RouteInfo.shuttleHTML()); };
   },
@@ -371,11 +427,11 @@ const Planner = {
     const dismiss = () => { const ov = $("#modal-overlay"); if (ov) ov._dismiss(); };
 
     if (it.kind === "fixed") {
-      const base = FIXED_EVENTS.find((f) => f.id === it.id) || it;
+      const base = allFixed().find((f) => f.id === it.id) || it;
       const edited = !!(S().fixed_edits || {})[it.id];
       const kst = kstRange(date, it.start, it.end);
       openSheet({
-        title: "📌 고정 일정",
+        title: it.keynote ? "🎤 키노트" : "📌 고정 일정",
         body: `
           <div class="info-list">
             <span>🗓️</span><span>${esc(dayLabel(date))} · 현지 시간${kst ? ` <span class="muted">(🇰🇷 ${kst})</span>` : ""}</span>
@@ -420,6 +476,16 @@ const Planner = {
     const kst = kstRange(it.date, it.start_time, it.end_time);
     const room = roomLabel(it);
     const venueCo = this.venueCoords(it.venue);
+    const withP = Share.withPeers(id, date);
+    // 대체 세션: 백업으로 표시한 것 먼저, 이어서 추천
+    const planned = Suggest.plannedIds(date);
+    const pinned = (S().backups[id] || []).map((x) => this.sessionById(x)).filter((x) => x && !planned.has(x.session_id));
+    const recs = Suggest.alternatives(id, { limit: 6 }).filter((x) => !pinned.includes(x));
+    const alts = pinned.concat(recs).slice(0, 5);
+    const altHTML = alts.length ? `
+        <h3 class="sg-head">🔁 ${res === "reserved" ? "대체 세션" : "예약이 어렵다면? 대체 세션"}</h3>
+        <p class="muted" style="font-size:12px;margin:0 0 4px;">같은 시간대(±30분)의 비슷한 세션이에요. ☆로 백업 표시, '바꾸기'로 일정 교체.</p>
+        ${alts.map((c) => Suggest.rowHTML(c, { near: it.venue, swap: true, baseId: id })).join("")}` : "";
     openSheet({
       title: "내 일정",
       body: `
@@ -429,6 +495,7 @@ const Planner = {
           ${kst ? `<span>🇰🇷</span><span>${kst} <span class="muted">한국</span></span>` : ""}
           ${it.venue ? `<span>📍</span><span>${esc(it.venue)}${room ? `<span class="muted"> · ${esc(room)}</span>` : ""}</span>` : ""}
           <span>🏷️</span><span>${[it.code, it.session_type, it.level ? "Lv." + it.level : ""].filter(Boolean).map((t) => `<span class="badge">${esc(t)}</span>`).join("")}</span>
+          ${withP.length ? `<span>👥</span><span>${withP.map((p) => `${Share.dotHTML(p)} ${esc(p.name)}`).join(", ")}님도 담았어요</span>` : ""}
         </div>
         <label class="field">예약 상태</label>
         <div class="seg" id="pi-res">
@@ -438,6 +505,7 @@ const Planner = {
         <div class="stars" id="pi-stars">${[1, 2, 3, 4, 5].map((i) => `<span data-s="${i}" class="${i <= n.rating ? "on" : ""}">★</span>`).join("")}</div>
         <label class="field" for="pi-memo">메모</label>
         <textarea id="pi-memo" rows="3" placeholder="배운 점, 후속 액션 등">${esc(n.memo)}</textarea>
+        ${altHTML}
         <div class="sheet-links">
           <button class="link-btn" id="pi-detail">세션 소개 보기</button>
           ${venueCo ? `<a class="link-btn" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${venueCo.lat},${venueCo.lng}">지도에서 보기</a>` : ""}
@@ -464,6 +532,7 @@ const Planner = {
       Store.save(); closeModal(); Views.planner(); toast("저장했어요");
     };
     $("#pi-detail").onclick = () => { closeModal(); Sessions.openDetail(id); };
+    Suggest.bind($(".bs-body"), { baseId: id, swap: true, onDone: () => Views.planner() });
     $("#pi-unfav").onclick = () => {
       const st = S();
       Object.keys(st.daily_plan).forEach((d) => { st.daily_plan[d] = (st.daily_plan[d] || []).filter((x) => x.session_id !== id); });
@@ -521,7 +590,7 @@ const Planner = {
         ? `<div class="up-leg st-${l.status}">${l.tr.icon} ${esc(l.tr.same ? "건물 내 이동" : `${shortVenue(l.a.it.venue)} → ${shortVenue(it.venue)}`)} ${l.tr.minutes}분 · ${esc(this.legStatusText(l))}${l.status !== "bad" ? ` · ${this.hhmm(l.leaveBy)}까지 출발` : ""}</div>` : "";
       return `${legRow}<div class="up-item" data-pday="${day}" data-pitem="${esc(id)}" role="button" tabindex="0">
         <div class="up-time">${this.hhmm(x.s)}<small>${this.hhmm(x.e)}</small></div>
-        <div class="up-body"><b>${esc(it.title)}</b><span class="muted">📍 ${esc(it.venue || "장소 미정")}</span><span>${resBadge}</span></div>
+        <div class="up-body"><b>${esc(it.title)}</b><span class="muted">📍 ${esc(it.venue || "장소 미정")}${(() => { const w = it.kind === "session" ? Share.withPeers(id, day) : []; return w.length ? ` · 👥 ${esc(w.map((p) => p.name).join(", "))}` : ""; })()}</span><span>${resBadge}</span></div>
         ${tag}
       </div>`;
     }).join("");
@@ -667,6 +736,11 @@ Views.planner = function () {
       const cls = [d === plannerDay ? "active" : "", d === vegasDateStr() ? "today" : ""].filter(Boolean).join(" ");
       return `<button data-day="${d}" class="${cls}"${d === plannerDay ? ' aria-current="date"' : ""}>${dayLabel(d)}${w ? " " + w : ""}</button>`;
     }).join("")}</div>
+    <div class="peer-bar">
+      ${Share.peers().map((p) => `<button class="peer-chip${p.visible !== false ? " on" : ""}" data-peer="${p.id}" aria-pressed="${p.visible !== false}">${Share.dotHTML(p)}${esc(p.name)}</button>`).join("")}
+      <button class="peer-chip add" id="pl-share">👥 ${Share.peers().length ? "공유·받기" : "동료와 일정 공유"}</button>
+      ${Share.peers().length ? `<button class="peer-chip add" id="pl-peers">관리</button>` : ""}
+    </div>
     <div id="pl-timeline">${Planner.renderTimetable(plannerDay)}</div>
     <div class="card"><h3>🧭 ${dayLabel(plannerDay)} 동선</h3>
       ${route || `<p class="muted">이 날은 이동할 일정이 없어요.</p>`}
@@ -678,7 +752,7 @@ Views.planner = function () {
       </div>
     </div>
     <div class="card"><h3>고정 이벤트 표시</h3>
-      ${FIXED_EVENTS.filter((f) => f.date === plannerDay).map((f0) => {
+      ${allFixed().filter((f) => f.date === plannerDay).map((f0) => {
         const f = { ...f0, ...((S().fixed_edits || {})[f0.id] || {}) };
         return `<label class="check-item"><input type="checkbox" data-fx="${f.id}" ${S().fixed_off.includes(f.id) ? "" : "checked"}>
         <span>${esc(f.start)} ${esc(f.title)}${f.venue ? ` <span class="muted">· ${esc(f.venue)}</span>` : ""}</span></label>`;
@@ -706,4 +780,18 @@ Views.planner = function () {
     it.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
   });
   $$("#view-planner [data-leg]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); Planner.openTravel(plannerDay, Number(b.dataset.leg)); });
+  $$("#view-planner [data-peer]").forEach((b) => b.onclick = () => {
+    const p = Share.peer(b.dataset.peer); p.visible = p.visible === false; Store.save(); Views.planner();
+  });
+  $("#pl-share").onclick = () => Share.open();
+  const pm = $("#pl-peers");
+  if (pm) pm.onclick = () => Share.openManage();
+  $$("#pl-timeline [data-peeritem]").forEach((b) => b.onclick = () => {
+    const [pid, sid] = b.dataset.peeritem.split("|");
+    Share.openItem(pid, sid, plannerDay);
+  });
+  $$("#view-planner [data-gap]").forEach((b) => b.onclick = () => {
+    const [from, to, near] = b.dataset.gap.split("|");
+    Suggest.openGap(plannerDay, Number(from), Number(to), near);
+  });
 };

@@ -180,7 +180,8 @@ function defaultState() {
     notify: { on: false, minutes: 15 },  // 관심 세션 시작 알림 (앱이 켜져 있을 때만 동작)
     weather_cache: null,
     depart_done: {},   // 출발 전 할 일 완료 상태
-    budget_usd: 0      // 정산 예산 (USD)
+    budget_usd: 0,     // 정산 예산 (USD)
+    peers: []          // 받은 동료 일정 [{id, name, days, visible, color, at}]
   };
 }
 const Store = {
@@ -207,6 +208,21 @@ const FIXED_EVENTS = [
   { id: "expo-happy", date: "2026-12-02", start: "16:30", end: null, title: "Expo 해피아워", venue: "The Venetian", note: "", src: "guide" },
   { id: "replay", date: "2026-12-03", start: "19:30", end: "23:59", title: "re:Play 파티", venue: "Las Vegas Festival Grounds", note: "야외 — 방한·귀마개 필수", src: "guide" }
 ];
+
+/* 키노트: 공식 일정이 데이터(event_info.keynotes.items)에 들어오면 자동으로 고정 일정에 추가
+   형식: [{ date: "2026-12-01", start: "08:00", end: "10:30", title: "...", speaker: "...", venue: "The Venetian" }] */
+function keynoteInfo() { return (window.APP_DATA.event_info && window.APP_DATA.event_info.keynotes) || {}; }
+function keynoteEvents() {
+  const k = keynoteInfo(), items = Array.isArray(k.items) ? k.items : [];
+  return items.filter((x) => x && x.date && x.start).map((x, i) => ({
+    id: "keynote-" + (x.id || i), date: x.date, start: x.start, end: x.end || null,
+    title: "🎤 " + (x.title || "키노트") + (x.speaker ? ` — ${x.speaker}` : ""),
+    venue: x.venue || "", keynote: true, src: "official",
+    note: [k.korean_interpretation ? "한국어 동시통역(헤드셋)" : "", k.livestream ? "라이브스트림" : ""].filter(Boolean).join(" · ")
+  }));
+}
+/* 고정 이벤트 + 공개된 키노트 */
+function allFixed() { return FIXED_EVENTS.concat(keynoteEvents()); }
 
 /* ---------- tab router ---------- */
 const Views = {};
@@ -526,6 +542,7 @@ function finishOnboarding() {
   $("#onboarding").innerHTML = "";
   switchTab("home");
   maybeShowInstallGuide();
+  Share.checkLink(); // 공유 링크로 처음 들어온 경우
 }
 
 /* ---------- home view ---------- */
@@ -570,9 +587,18 @@ Views.home = function () {
       ${todos.length ? todos.map((t) => `<div class="todo-item" data-go="${t.tab}" role="button" tabindex="0">
         <span class="dot"></span><span class="txt">${esc(t.text)}</span><span class="chev">›</span></div>`).join("") : `<p class="muted">할 일이 없어요. 완벽해요 ✨</p>`}
     </div>
-    <div class="card"><h3>추후 확인</h3>
-      <div class="muted" style="font-size:13px;">키노트 일정 · 셔틀 세부 노선 · Expo 공식 시간 — 공식 발표 시 앱에 반영됩니다.</div>
-    </div>`;
+    ${(() => {
+      const k = keynoteInfo(), kn = keynoteEvents();
+      return `<div class="card"><h3>🎤 키노트</h3>
+        ${kn.length ? kn.map((x) => `<div class="kv"><span>${esc(dayLabel(x.date))} ${esc(x.start)}</span><b>${esc(x.title.replace(/^🎤 /, ""))}</b></div>`).join("") +
+          `<p class="muted" style="font-size:12px;margin:6px 0 0;">내 일정 시간표에 자동으로 들어가 있어요.</p>`
+        : `<p class="muted" style="font-size:13px;margin:0;">공식 일정·연사는 아직 공개 전이에요. 공개되면 내 일정에 자동으로 추가돼요.</p>`}
+        ${k.korean_interpretation ? `<div class="notice" style="margin-bottom:0;">🇰🇷 ${esc(k.korean_interpretation_note || "키노트 한국어 실시간 통역 제공")}${k.livestream ? ` · ${esc(k.livestream)}` : ""}</div>` : ""}
+      </div>
+      <div class="card"><h3>추후 확인</h3>
+        <div class="muted" style="font-size:13px;">셔틀 세부 노선 · Expo 공식 시간 — 공식 발표 시 앱에 반영됩니다.</div>
+      </div>`;
+    })()}`;
   $$("#view-home [data-go]").forEach((el) => el.onclick = () => switchTab(el.dataset.go));
   Planner.bindUpcoming();
   Weather.refresh();
@@ -697,4 +723,5 @@ document.addEventListener("DOMContentLoaded", () => {
   $$("#tabbar button").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
   if (!S().onboarded) startOnboarding();
   else { switchTab("home"); maybeShowInstallGuide(); }
+  Share.checkLink();
 });
