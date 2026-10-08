@@ -2,6 +2,10 @@
   --navy: #0f1f3d;
   --navy2: #1b2f5e;
   --accent: #ff9900;
+  --select-bg: #ffe9c9;      /* light: soft peach */
+  --select-text: #8a4d00;
+  --select-border: #f2b45c;
+  --tab-active: #d97a00;
   --bg: #f4f6fb;
   --card: #ffffff;
   --text: #1a2333;
@@ -44,7 +48,7 @@ body {
   font-size: 11px; color: var(--muted); cursor: pointer;
 }
 #tabbar button .ico { font-size: 20px; }
-#tabbar button.active { color: #ff9900; font-weight: 700; }
+#tabbar button.active { color: var(--tab-active); font-weight: 700; }
 
 .view { display: none; padding: 14px 14px 20px; }
 .view.active { display: block; }
@@ -131,12 +135,12 @@ label.field { font-size: 13px; font-weight: 600; color: var(--muted); }
 .day-tabs { display: flex; gap: 6px; overflow-x: auto; padding: 4px 0 10px; }
 .day-tabs button { flex: 0 0 auto; border: 1px solid var(--line); background: #fff;
   border-radius: 10px; padding: 8px 12px; font-size: 13px; cursor: pointer; }
-.day-tabs button.active { background: var(--accent); color: #1a1a1a; border-color: var(--accent); font-weight: 700; }
+.day-tabs button.active { background: var(--select-bg); color: var(--select-text); border-color: var(--select-border); font-weight: 700; }
 
 .chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
 .chip { border: 1px solid var(--line); background: #fff; border-radius: 999px;
   padding: 6px 12px; font-size: 13px; cursor: pointer; }
-.chip.on { background: var(--accent); color: #1a1a1a; border-color: var(--accent); font-weight: 700; }
+.chip.on { background: var(--select-bg); color: var(--select-text); border-color: var(--select-border); font-weight: 700; }
 
 table.plain { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 table.plain td, table.plain th { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; }
@@ -159,6 +163,10 @@ table.plain th { color: var(--muted); font-weight: 600; font-size: 12px; }
 
 /* ---------- dark mode ---------- */
 [data-theme="dark"] {
+  --select-bg: #4a3016;      /* dark: muted, low saturation */
+  --select-text: #ffd9a8;
+  --select-border: #7d5a2e;
+  --tab-active: #ffcf99;
   --bg: #0e1420;
   --card: #182032;
   --text: #e9edf5;
@@ -226,7 +234,6 @@ table.plain th { color: var(--muted); font-weight: 600; font-size: 12px; }
 .check-item .grow { flex: 1; display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
 
 /* ---------- dark mode: tabbar active visibility ---------- */
-[data-theme="dark"] #tabbar button.active { color: #ffb84d; }
 
 /* ---------- mobile: touch targets & iOS zoom ---------- */
 input[type=text], input[type=number], input[type=date], input[type=time],
@@ -275,10 +282,6 @@ button.btn, .btn { padding: 12px 16px; }
   background: var(--card); padding: 0 4px; font-weight: 600; }
 .tt-block { position: absolute; border-radius: 10px; padding: 6px 8px; overflow: hidden;
   cursor: pointer; border: 1px solid var(--line); background: #f2f6ff; z-index: 1; }
-.tt-block.tt-session { border-left: 4px solid var(--accent); }
-.tt-block.tt-fixed { border-left: 4px solid #9aa7c2; background: #f7f9fd; }
-[data-theme="dark"] .tt-block.tt-session { background: #1d2a45; }
-[data-theme="dark"] .tt-block.tt-fixed { background: #232f4a; }
 .tt-time { font-weight: 700; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tt-kst { font-weight: 400; color: var(--muted); font-size: 11px; }
 .tt-title { font-size: 13px; line-height: 1.35; margin-top: 2px; overflow: hidden;
@@ -304,3 +307,12 @@ button.btn, .btn { padding: 12px 16px; }
 .day-tabs::-webkit-scrollbar { display: none; }
 .tt-kst { font-weight: 400; color: var(--muted); font-size: 11px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- in-app report (per-day) ---------- */
+.report-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.report-item { padding: 12px 2px; border-bottom: 1px solid var(--line); }
+.report-time { font-weight: 700; font-size: 14px; color: #1d4fa3; }
+[data-theme="dark"] .report-time { color: #9db8e8; }
+.report-title { font-size: 15px; font-weight: 600; margin-top: 3px; }
+.report-venue { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.report-page { text-align: center; font-size: 12px; margin-top: 12px; }

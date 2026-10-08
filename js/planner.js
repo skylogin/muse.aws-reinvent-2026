@@ -14,7 +14,28 @@ function todayClamped() {
 /* 공식 카탈로그 베뉴 표기 → event_info 베뉴명 매핑 (좌표 조회용) */
 const VENUE_ALIASES = { "Wynn/Encore": "Wynn", "Venetian": "The Venetian" };
 
+/* 베뉴별 블록 색상 [라이트 배경, 라이트 테두리, 다크 배경, 다크 테두리] */
+const VENUE_COLORS = [
+  ["#dbeafe", "#3b82f6", "#1e3a5f", "#60a5fa"], // Caesars Forum
+  ["#ede9fe", "#8b5cf6", "#2e235f", "#a78bfa"], // Caesars Palace
+  ["#fce4ec", "#f43f5e", "#5f1e2e", "#fb7185"], // Encore
+  ["#dcfce7", "#22c55e", "#1e4d2e", "#4ade80"], // MGM Grand
+  ["#ccfbf1", "#14b8a6", "#1e4d4a", "#2dd4bf"], // The Venetian
+  ["#fef3c7", "#f59e0b", "#4d3a1e", "#fbbf24"]  // Wynn
+];
+const FIXED_COLOR = ["#f1f5f9", "#94a3b8", "#2a3444", "#64748b"];
+
 const Planner = {
+  venueBlockStyle(venue, isFixed) {
+    const dark = document.documentElement.dataset.theme === "dark";
+    let c = FIXED_COLOR;
+    if (!isFixed) {
+      const idx = VENUES.indexOf(venue);
+      if (idx >= 0) c = VENUE_COLORS[idx];
+    }
+    const bg = dark ? c[2] : c[0], border = dark ? c[3] : c[1];
+    return `background:${bg};border-left:4px solid ${border};`;
+  },
   sessionById(id) { return allSessions().find((s) => s.session_id === id); },
 
   itemsFor(date) {
@@ -120,15 +141,16 @@ const Planner = {
       const hgt = Math.max(b.e - b.s, 46);
       const left = `calc(${GUTTER}px + (100% - ${GUTTER}px) * ${b.col / b.cols})`;
       const width = `calc((100% - ${GUTTER}px) / ${b.cols} - 6px)`;
-      const kind = b.it.kind === "fixed" ? "fixed" : "session";
+      const isFixed = b.it.kind === "fixed";
+      const vStyle = this.venueBlockStyle(b.it.venue, isFixed);
       const time = `${b.it.start || b.it.start_time || ""}${(b.it.end || b.it.end_time) ? "–" + (b.it.end || b.it.end_time) : ""}`;
       const kst = kstRange(date, b.it.start || b.it.start_time, b.it.end || b.it.end_time);
       const note = b.it.note || (S().session_notes[b.it.session_id || b.it.id] || {}).memo;
-      html += `<div class="tt-block tt-${kind}" data-pitem="${esc(b.it.session_id || b.it.id)}"
-        style="top:${top}px;height:${hgt}px;left:${left};width:${width};" role="button" tabindex="0">
+      html += `<div class="tt-block" data-pitem="${esc(b.it.session_id || b.it.id)}"
+        style="top:${top}px;height:${hgt}px;left:${left};width:${width};${vStyle}" role="button" tabindex="0">
         <div class="tt-time">${esc(time)}</div>
         ${kst ? `<div class="tt-kst">🇰🇷${kst}</div>` : ""}
-        <div class="tt-title">${b.it.kind === "fixed" ? `<span class="badge warn">고정</span> ` : ""}<strong>${esc(b.it.title)}</strong></div>
+        <div class="tt-title">${isFixed ? `<span class="badge warn">고정</span> ` : ""}<strong>${esc(b.it.title)}</strong></div>
         ${b.it.venue ? `<div class="tt-venue">📍 ${esc(b.it.venue)}</div>` : ""}
         ${note ? `<div class="tt-venue">📝 ${esc(note)}</div>` : ""}
       </div>`;
@@ -206,31 +228,38 @@ const Planner = {
     toast("ICS 파일을 저장했어요");
   },
 
-  printView() {
-    const rows = DAYS.map((d) => {
+  reportView() {
+    let idx = Math.max(0, DAYS.indexOf(plannerDay));
+    const render = () => {
+      const d = DAYS[idx];
       const items = this.itemsFor(d);
-      if (!items.length) return "";
-      return `<h2>${dayLabel(d)}</h2>
-        <table><tr><th style="width:130px;">시간 (현지)</th><th>일정</th><th>장소</th></tr>
-        ${items.map((it) => {
-          const time = `${it.start || it.start_time || ""}${(it.end || it.end_time) ? "–" + (it.end || it.end_time) : ""}`;
-          const kst = kstRange(d, it.start || it.start_time, it.end || it.end_time);
-          return `<tr><td>${esc(time)}${kst ? `<br><span style="color:#666;">🇰🇷${kst}</span>` : ""}</td><td>${esc(it.title)}</td><td>${esc(it.venue || "")}</td></tr>`;
-        }).join("")}</table>`;
-    }).join("");
-    const w = window.open("", "_blank");
-    if (!w) { toast("팝업 차단을 해제해 주세요"); return; }
-    w.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>re:Invent 2026 일정표</title>
-      <style>body{font-family:-apple-system,"Apple SD Gothic Neo",sans-serif;max-width:820px;margin:24px auto;padding:0 16px;color:#000;}
-      h1{font-size:22px;margin:0 0 4px;}h2{font-size:16px;margin:22px 0 8px;border-bottom:2px solid #000;padding-bottom:4px;}
-      table{width:100%;border-collapse:collapse;font-size:13px;}th,td{border:1px solid #999;padding:6px 8px;text-align:left;vertical-align:top;}
-      th{background:#eee;}.meta{color:#666;font-size:12px;margin:0 0 8px;}</style></head><body>
-      <h1>re:Invent 2026 출장 일정표</h1>
-      <p class="meta">${esc(S().profile.nickname || "게스트")} · 현지 시간 기준</p>
-      ${rows || "<p>일정이 비어 있어요.</p>"}
-      <script>window.onload=function(){window.print();};<\/script>
-      </body></html>`);
-    w.document.close();
+      openModal(`
+        <div class="report">
+          <div class="report-head">
+            <button class="btn ghost small" id="rp-prev"${idx === 0 ? " disabled" : ""}>◀</button>
+            <div style="text-align:center;"><h2 style="margin:0;">${dayLabel(d)}</h2>
+            <div class="muted" style="font-size:12px;">re:Invent 2026 출장 일정 · 현지 시간</div></div>
+            <button class="btn ghost small" id="rp-next"${idx === DAYS.length - 1 ? " disabled" : ""}>▶</button>
+          </div>
+          ${items.length ? items.map((it) => {
+            const time = `${it.start || it.start_time || ""}${(it.end || it.end_time) ? "–" + (it.end || it.end_time) : ""}`;
+            const kst = kstRange(d, it.start || it.start_time, it.end || it.end_time);
+            return `<div class="report-item">
+              <div class="report-time">${esc(time)}</div>
+              <div class="report-title">${it.kind === "fixed" ? `<span class="badge warn">고정</span> ` : ""}${esc(it.title)}</div>
+              ${it.venue ? `<div class="report-venue">📍 ${esc(it.venue)}</div>` : ""}
+              ${kst ? `<div class="report-venue">🇰🇷 ${kst}</div>` : ""}
+            </div>`;
+          }).join("") : `<div class="empty-state"><p>등록된 일정이 없어요</p></div>`}
+          <div class="report-page muted">${idx + 1} / ${DAYS.length}</div>
+        </div>
+        <button class="btn ghost block" id="rp-close">닫기</button>`);
+      const prev = $("#rp-prev"), next = $("#rp-next");
+      if (prev) prev.onclick = () => { if (idx > 0) { idx--; render(); } };
+      if (next) next.onclick = () => { if (idx < DAYS.length - 1) { idx++; render(); } };
+      $("#rp-close").onclick = closeModal;
+    };
+    render();
   }
 };
 
@@ -287,7 +316,7 @@ Views.planner = function () {
     </div>
     <div class="row">
       <button class="btn ghost small" id="pl-ics">📅 ICS 내보내기</button>
-      <button class="btn ghost small" id="pl-print">🖨️ 인쇄용 일정표</button>
+      <button class="btn ghost small" id="pl-report">📋 일정 보고서</button>
     </div>`;
   $$("#view-planner [data-day]").forEach((b) => b.onclick = () => { plannerManual = true; plannerDay = b.dataset.day; Views.planner(); });
   $("#ri-venues").onclick = () => openDrawer("베뉴 6곳", RouteInfo.venuesHTML());
@@ -296,7 +325,7 @@ Views.planner = function () {
   $("#ri-strategy").onclick = () => openDrawer("베뉴 이동 전략", RouteInfo.strategyHTML());
   $$("#view-planner [data-fx]").forEach((c) => c.onchange = () => Planner.toggleFixed(c.dataset.fx));
   $("#pl-ics").onclick = () => Planner.exportICS();
-  $("#pl-print").onclick = () => Planner.printView();
+  $("#pl-report").onclick = () => Planner.reportView();
   $$("#pl-timeline [data-pitem]").forEach((it) => it.addEventListener("click", () => {
     const id = it.dataset.pitem;
     if (!id) return;
