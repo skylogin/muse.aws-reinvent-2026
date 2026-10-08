@@ -298,3 +298,9 @@ button.btn, .btn { padding: 12px 16px; }
 .chip:focus-visible, .day-tabs button:focus-visible, #tabbar button:focus-visible {
   outline: 2px solid #1d4fa3; outline-offset: 2px;
 }
+
+/* day tabs: hide scrollbar */
+.day-tabs { scrollbar-width: none; -ms-overflow-style: none; }
+.day-tabs::-webkit-scrollbar { display: none; }
+.tt-kst { font-weight: 400; color: var(--muted); font-size: 11px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

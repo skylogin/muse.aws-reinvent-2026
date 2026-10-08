@@ -126,7 +126,8 @@ const Planner = {
       const note = b.it.note || (S().session_notes[b.it.session_id || b.it.id] || {}).memo;
       html += `<div class="tt-block tt-${kind}" data-pitem="${esc(b.it.session_id || b.it.id)}"
         style="top:${top}px;height:${hgt}px;left:${left};width:${width};" role="button" tabindex="0">
-        <div class="tt-time">${esc(time)}${kst ? ` <span class="tt-kst">🇰🇷${kst}</span>` : ""}</div>
+        <div class="tt-time">${esc(time)}</div>
+        ${kst ? `<div class="tt-kst">🇰🇷${kst}</div>` : ""}
         <div class="tt-title">${b.it.kind === "fixed" ? `<span class="badge warn">고정</span> ` : ""}<strong>${esc(b.it.title)}</strong></div>
         ${b.it.venue ? `<div class="tt-venue">📍 ${esc(b.it.venue)}</div>` : ""}
         ${note ? `<div class="tt-venue">📝 ${esc(note)}</div>` : ""}
