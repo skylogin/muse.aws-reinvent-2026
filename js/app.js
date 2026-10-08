@@ -456,51 +456,8 @@ Views.home = function () {
     </div>
     <div class="card"><h3>추후 확인</h3>
       <div class="muted" style="font-size:13px;">키노트 일정 · 셔틀 세부 노선 · Expo 공식 시간 — 공식 발표 시 앱에 반영됩니다.</div>
-    </div>
-    <div class="card"><h3>설정</h3>
-      <div class="kv"><span>닉네임</span><b>${esc(st.profile.nickname) || "게스트"}</b></div>
-      <div class="kv"><span>관심 토픽</span><b>${st.profile.topics.length ? esc(st.profile.topics.slice(0, 3).join(", ")) + (st.profile.topics.length > 3 ? "…" : "") : "미설정"}</b></div>
-      <div class="row" style="margin-top:10px;">
-        <button class="btn ghost small" id="set-profile">프로필 수정</button>
-        <button class="btn ghost small" id="set-transfer">모바일로 옮기기</button>
-      </div>
-      <div class="row" style="margin-top:8px;">
-        <button class="btn ghost small" id="set-backup">백업 내보내기</button>
-        <button class="btn ghost small" id="set-install">설치 안내 다시 보기</button>
-      </div>
-      <div class="row" style="margin-top:8px;">
-        <button class="btn ghost small" id="set-theme">🌙 다크모드</button>
-        <button class="btn ghost small" id="set-mock">🧪 2025 샘플 세션</button>
-      </div>
-      <div class="row" style="margin-top:8px;">
-        <button class="btn ghost small" id="set-notify">${S().notify.on ? "🔕 세션 알림 끄기" : "🔔 세션 알림 켜기"}</button>
-        <select id="set-notify-min" aria-label="알림 시점">${[5, 10, 15, 30].map((m) => `<option value="${m}"${S().notify.minutes === m ? " selected" : ""}>${m}분 전</option>`).join("")}</select>
-      </div>
-      <p class="muted" style="font-size:12px;margin:4px 0 0;">앱이 켜져 있을 때 관심 세션 시작 전에 알려줘요.</p>
     </div>`;
   $$("#view-home [data-go]").forEach((el) => el.onclick = () => switchTab(el.dataset.go));
-  $("#set-profile").onclick = Settings.editProfile;
-  $("#set-transfer").onclick = () => TransferUI.showExport();
-  $("#set-backup").onclick = () => TransferUI.exportFile();
-  $("#set-install").onclick = () => { S().install_dismissed = false; maybeShowInstallGuide(); };
-  $("#set-theme").onclick = () => {
-    S().theme = S().theme === "dark" ? "light" : "dark";
-    Store.save(); applyTheme();
-    toast(S().theme === "dark" ? "다크모드로 바꿨어요 🌙" : "라이트모드로 바꿨어요 ☀️");
-  };
-  $("#set-mock").onclick = () => Settings.toggleMock();
-  $("#set-notify").onclick = async () => {
-    if (S().notify.on) { Notify.disable(); }
-    else {
-      const minutes = Number(($("#set-notify-min") || {}).value) || 15;
-      const ok = await Notify.enable(minutes);
-      if (!ok) return;
-    }
-    Views.home();
-  };
-  const nmSel = $("#set-notify-min");
-  if (nmSel) nmSel.onchange = () => { S().notify.minutes = Number(nmSel.value) || 15; Store.save(); };
-  applyTheme();
   Weather.refresh();
 };
 
@@ -535,7 +492,7 @@ const Settings = {
     S().mock_sessions = !S().mock_sessions;
     Store.save();
     toast(S().mock_sessions ? "🧪 2025 샘플 세션으로 체험해요" : "샘플 세션을 껐어요");
-    Views.home();
+    if (Views[currentTab]) Views[currentTab]();
   }
 };
 

@@ -128,10 +128,10 @@ const Sessions = {
     // shuttle + venues from event_info
     const sh = window.APP_DATA.event_info.shuttle;
     if (sh && sh.note && sh.note.toLowerCase().includes(q))
-      hits.push({ kind: "가이드", title: "베뉴 간 셔틀", sub: sh.note.slice(0, 120), tab: "transport" });
+      hits.push({ kind: "가이드", title: "베뉴 간 셔틀", sub: sh.note.slice(0, 120), tab: "planner" });
     (window.APP_DATA.event_info.venues || []).forEach((v) => {
       if ((v.name + " " + (v.address || "")).toLowerCase().includes(q))
-        hits.push({ kind: "가이드", title: v.name, sub: v.address || "", tab: "transport" });
+        hits.push({ kind: "가이드", title: v.name, sub: v.address || "", tab: "planner" });
     });
     return hits.slice(0, 50);
   },

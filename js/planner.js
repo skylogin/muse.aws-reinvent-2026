@@ -153,6 +153,36 @@ const Planner = {
   }
 };
 
+/* ---- route info (drawers) ---- */
+const RouteInfo = {
+  taxiZone: { "MGM Grand": "Zone 1 · $21.25", "Caesars Palace": "Zone 2 · $25.25", "Wynn": "Zone 3 · $29.25" },
+  venuesHTML() {
+    const venues = (window.APP_DATA.event_info.venues || []);
+    return `<p class="muted" style="font-size:13px;">베뉴 6곳 — 탭하면 Google Maps가 열립니다.</p>` + venues.map((v) => `
+      <div class="kv"><span><strong>${esc(v.name)}</strong><br>
+        <span class="muted" style="font-size:12px;">${esc(v.address || "")}${this.taxiZone[v.name] ? `<br>택시 ${esc(this.taxiZone[v.name])}` : ""}</span></span>
+        <a class="btn ghost small map-btn" target="_blank" rel="noopener"
+           href="https://www.google.com/maps/search/?api=1&query=${v.lat},${v.lng}">📍 지도</a>
+      </div>`).join("");
+  },
+  shuttleHTML() {
+    const sh = window.APP_DATA.event_info.shuttle || {};
+    return `<p style="font-size:14px;">${esc(sh.note || "베뉴 간 셔틀 운행 (배지 필수)")}</p>
+      <p><span class="badge warn">시간표 미공개</span></p>
+      <p class="muted" style="font-size:13px;">세부 노선·시간표는 가을 중 공개 예정 — 출발 직전 AWS Events 앱에서 확인하세요.</p>
+      <div class="notice">💡 배지 제시로 <strong>라스베가스 모노레일 무료</strong> (SAHARA ↔ MGM Grand, 공항 미연결)</div>`;
+  },
+  airportHTML() {
+    const sec = (window.APP_DATA.prep_sections || []).find((s) => s.id.includes("공항"));
+    return sec ? sec.html : `<p class="muted">가이드 준비 중</p>`;
+  },
+  strategyHTML() {
+    return `<p>세션을 <strong>베뉴 블록 단위</strong>로 묶고, 세션 사이 <strong>최소 40분</strong> 여유를 두세요.</p>
+      <p>위 타임라인에서 베뉴가 바뀌면 이동 시간·수단을 자동으로 계산해 줍니다.</p>
+      <p class="muted" style="font-size:13px;">다녀온 사람들 팁: 하루 일정은 <strong>베뉴 2곳(오전/오후)</strong>으로만 짜고, 이동에 1시간 여유를 두세요.</p>`;
+  }
+};
+
 Views.planner = function () {
   if (!plannerManual) plannerDay = todayClamped(); // 탭을 열 때마다 현지 날짜로
   if (!DAYS.includes(plannerDay)) plannerDay = "2026-11-30";
@@ -163,6 +193,12 @@ Views.planner = function () {
       return `<button data-day="${d}" class="${d === plannerDay ? "active" : ""}">${dayLabel(d)}${w ? " " + w : ""}</button>`;
     }).join("")}</div>
     <div id="pl-timeline">${Planner.renderTimeline(plannerDay)}</div>
+    <div class="card"><h3>🗺️ 동선 정보</h3>
+      <button class="btn ghost block left info-btn" id="ri-venues">🗺️ 베뉴 6곳·지도</button>
+      <button class="btn ghost block left info-btn" id="ri-shuttle">🚌 베뉴 간 셔틀</button>
+      <button class="btn ghost block left info-btn" id="ri-airport">✈️ 공항 → 호텔 이동</button>
+      <button class="btn ghost block left info-btn" id="ri-strategy">📌 베뉴 이동 전략</button>
+    </div>
     <div class="card"><h3>고정 이벤트 표시</h3>
       ${FIXED_EVENTS.filter((f) => f.date === plannerDay).map((f) => `
         <label class="check-item"><input type="checkbox" data-fx="${f.id}" ${S().fixed_off.includes(f.id) ? "" : "checked"}>
@@ -170,6 +206,10 @@ Views.planner = function () {
     </div>
     <button class="btn ghost block" id="pl-ics">📅 ICS로 내보내기 (캘린더 연동)</button>`;
   $$("#view-planner [data-day]").forEach((b) => b.onclick = () => { plannerManual = true; plannerDay = b.dataset.day; Views.planner(); });
+  $("#ri-venues").onclick = () => openDrawer("베뉴 6곳", RouteInfo.venuesHTML());
+  $("#ri-shuttle").onclick = () => openDrawer("베뉴 간 셔틀", RouteInfo.shuttleHTML());
+  $("#ri-airport").onclick = () => openDrawer("공항 → 호텔 이동", RouteInfo.airportHTML());
+  $("#ri-strategy").onclick = () => openDrawer("베뉴 이동 전략", RouteInfo.strategyHTML());
   $$("#view-planner [data-fx]").forEach((c) => c.onchange = () => Planner.toggleFixed(c.dataset.fx));
   $("#pl-ics").onclick = () => Planner.exportICS();
   $$("#pl-timeline [data-pitem]").forEach((it) => it.addEventListener("click", () => {
