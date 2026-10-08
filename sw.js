@@ -1,5 +1,5 @@
 /* re:Invent 2026 출장 앱 — Service Worker (cache-first, offline ready) */
-const CACHE = "reinvent2026-v12";
+const CACHE = "reinvent2026-v13";
 const ASSETS = [
   "./",
   "./index.html",
@@ -33,9 +33,12 @@ const ASSETS = [
   "./js/expenses.js",
   "./js/settings.js",
   "./js/transfer.js",
+  "./icons/icon.svg",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
-  "./icons/apple-touch-icon.png"
+  "./icons/maskable-512.png",
+  "./icons/apple-touch-icon.png",
+  "./icons/favicon-32.png"
 ];
 
 self.addEventListener("install", (e) => {
@@ -64,5 +67,14 @@ self.addEventListener("fetch", (e) => {
         return res;
       }).catch(() => caches.match("./index.html"));
     })
+  );
+});
+
+/* 세션 시작 알림을 누르면 열려 있는 앱으로 이동 */
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((cs) =>
+      cs.length ? cs[0].focus() : self.clients.openWindow("./index.html"))
   );
 });

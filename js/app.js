@@ -19,12 +19,24 @@ function toast(msg) {
 
 function openModal(html, opts) {
   const root = $("#modal-root");
-  root.innerHTML = `<div class="overlay center" id="modal-overlay"><div class="sheet">${html}</div></div>`;
+  root.innerHTML = `<div class="overlay center" id="modal-overlay"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`;
   const ov = $("#modal-overlay");
-  ov.addEventListener("click", (e) => { if (e.target === ov && !(opts && opts.sticky)) closeModal(); });
+  ov._sticky = !!(opts && opts.sticky);
+  ov.addEventListener("click", (e) => { if (e.target === ov && !ov._sticky) closeModal(); });
+  document.body.classList.add("modal-open");
   return ov;
 }
-function closeModal() { $("#modal-root").innerHTML = ""; }
+function closeModal() { $("#modal-root").innerHTML = ""; document.body.classList.remove("modal-open"); }
+
+/* Esc: 모달 → 드로어 → 보고서 순으로 닫기 (PC·키보드 사용 시) */
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  const ov = $("#modal-overlay");
+  if (ov) { if (!ov._sticky) closeModal(); return; }
+  if ($("#drawer-overlay")) { closeDrawer(); return; }
+  const rp = $("#report-screen.open");
+  if (rp) rp.classList.remove("open");
+});
 
 function download(filename, text, mime) {
   const blob = new Blob([text], { type: mime || "application/octet-stream" });
@@ -111,7 +123,7 @@ function defaultState() {
     fixed_edits: {},         // fixed event overrides {id: {title,start,end,venue,note}}
     install_dismissed: false,
     fx_rate: 1450,
-    theme: (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light",
+    theme: "system",         // system | light | dark
     notify: { on: false, minutes: 15 },  // 관심 세션 시작 알림 (앱이 켜져 있을 때만 동작)
     weather_cache: null,
     depart_done: {},   // 출발 전 할 일 완료 상태
@@ -162,14 +174,26 @@ function tickClock() {
   if (k) k.textContent = `한국 ${fmtDateTime(tzParts("Asia/Seoul"))}`;
 }
 
-/* ---------- theme (dark mode) ---------- */
+/* ---------- theme (system / light / dark) ---------- */
+const darkMQ = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+function resolvedTheme() {
+  const t = S().theme;
+  if (t === "light" || t === "dark") return t;
+  return darkMQ && darkMQ.matches ? "dark" : "light"; // "system"
+}
 function applyTheme() {
-  const t = S().theme === "dark" ? "dark" : "light";
+  const t = resolvedTheme();
+  const changed = document.documentElement.dataset.theme !== t;
   document.documentElement.dataset.theme = t;
   const mc = document.querySelector('meta[name="theme-color"]');
-  if (mc) mc.content = t === "dark" ? "#0e1420" : "#0f1f3d";
-  const btn = $("#set-theme");
-  if (btn) btn.textContent = t === "dark" ? "☀️ 라이트모드" : "🌙 다크모드";
+  if (mc) mc.content = t === "dark" ? "#16233f" : "#0f1f3d"; // 상단 헤더 색과 맞춤
+  // 시간표 블록 색은 렌더 시점에 계산되므로 테마가 바뀌면 다시 그림
+  if (changed && currentTab === "planner" && Views.planner) Views.planner();
+}
+if (darkMQ) {
+  const onSys = () => { if (Store.state && S().theme === "system") applyTheme(); };
+  if (darkMQ.addEventListener) darkMQ.addEventListener("change", onSys);
+  else if (darkMQ.addListener) darkMQ.addListener(onSys);
 }
 
 /* ---------- drawer (side panel for tips/info) ---------- */
@@ -181,17 +205,18 @@ function openDrawer(title, html) {
       <div class="drawer-head"><strong>${esc(title)}</strong><button class="drawer-close" id="drawer-close" aria-label="닫기">✕</button></div>
       <div class="drawer-body">${html}</div>
     </aside></div>`;
-  requestAnimationFrame(() => requestAnimationFrame(() => $("#drawer-overlay").classList.add("open")));
-  const close = () => {
-    const ov = $("#drawer-overlay");
-    if (!ov) return;
-    ov.classList.remove("open");
-    setTimeout(() => { const r = $("#drawer-root"); if (r) r.innerHTML = ""; }, 260);
-  };
-  $("#drawer-close").onclick = close;
-  $("#drawer-overlay").addEventListener("click", (e) => { if (e.target.id === "drawer-overlay") close(); });
+  requestAnimationFrame(() => requestAnimationFrame(() => { const ov = $("#drawer-overlay"); if (ov) ov.classList.add("open"); }));
+  $("#drawer-close").onclick = closeDrawer;
+  $("#drawer-overlay").addEventListener("click", (e) => { if (e.target.id === "drawer-overlay") closeDrawer(); });
+  // 가이드 본문의 링크는 새 창으로 (앱(PWA) 화면을 벗어나지 않게)
+  $$("#drawer-root .drawer-body a[href^='http']").forEach((a) => { a.target = "_blank"; a.rel = "noopener"; });
 }
-function closeDrawer() { const r = $("#drawer-root"); if (r) r.innerHTML = ""; }
+function closeDrawer() {
+  const ov = $("#drawer-overlay");
+  if (!ov) return;
+  ov.classList.remove("open");
+  setTimeout(() => { const r = $("#drawer-root"); if (r) r.innerHTML = ""; }, 260);
+}
 
 /* ---------- sessions accessor ---------- */
 function allSessions() {
@@ -231,6 +256,15 @@ const Notify = {
     this.check();
   },
   stop() { if (this.timer) { clearInterval(this.timer); this.timer = null; } },
+  show(title, opts) {
+    // Android Chrome은 new Notification()을 막으므로 서비스워커 알림을 우선 사용
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.ready.then((reg) => reg.showNotification(title, opts))
+        .catch(() => { try { new Notification(title, opts); } catch (e) {} });
+    } else {
+      try { new Notification(title, opts); } catch (e) {}
+    }
+  },
   check() {
     try {
       const nt = S().notify;
@@ -249,7 +283,7 @@ const Notify = {
         const diff = Planner.toMin(start) - nowMin;
         if (diff > 0 && diff <= lead) {
           this.fired.add(key);
-          new Notification("곧 시작해요 ⏰", {
+          this.show("곧 시작해요 ⏰", {
             body: `${it.title} · ${start} (${it.venue || "장소 미정"})`,
             icon: "icons/icon-192.png",
             tag: key
@@ -344,8 +378,9 @@ function platform() {
   if (/android/i.test(ua)) return "android";
   return "other";
 }
-function maybeShowInstallGuide() {
-  if (isStandalone() || S().install_dismissed) return;
+function maybeShowInstallGuide(force) {
+  if (isStandalone()) { if (force) toast("이미 앱으로 실행 중이에요 👍"); return; }
+  if (S().install_dismissed && !force) return;
   const pf = platform();
   let how = "";
   if (pf === "ios") how = `<li>Safari 하단 <strong>공유 버튼(⎙)</strong>을 누르세요</li><li><strong>"홈 화면에 추가"</strong>를 선택하세요</li><li>홈 화면의 아이콘으로 실행하면 앱처럼 켜집니다</li>`;
@@ -386,7 +421,7 @@ function stepNotice() {
     <h2>시작하기 전에</h2>
     <div class="notice">
       이 앱은 <strong>서버 없이 동작</strong>합니다. 입력한 정보는 이 브라우저(앱)에만 저장됩니다.<br><br>
-      다른 기기(PC → 모바일 등)에서도 보려면<br><strong>설정 → '모바일로 옮기기'에서 코드로 옮겨</strong>주세요.<br><br>
+      다른 기기(PC → 모바일 등)에서도 보려면<br><strong>설정 → '다른 기기로 옮기기'에서 코드로 옮겨</strong>주세요.<br><br>
       브라우저 캐시를 지우면 데이터가 사라지니,<br>백업 파일로 보관해 두세요.
     </div>
     <button class="btn block" id="ob-next">확인했어요</button>`);
@@ -398,7 +433,9 @@ function stepBranch() {
     <button class="btn block" id="ob-new">새로 시작하기</button>
     <button class="btn ghost block" id="ob-import">다른 기기에서 가져오기</button>`);
   $("#ob-new").onclick = stepProfile;
-  $("#ob-import").onclick = () => { TransferUI.showImport(() => { S().onboarded = true; Store.save(); finishOnboarding(); }); };
+  $("#ob-import").onclick = () => {
+    TransferUI.showImport(() => { S().onboarded = true; Store.save(); finishOnboarding(); }, () => {});
+  };
 }
 function stepProfile() {
   const topics = (window.APP_DATA.topics && window.APP_DATA.topics.topics) || [];
@@ -471,12 +508,18 @@ Views.home = function () {
 
     ${ph === "during" && upcoming.length ? `<div class="card"><h3>오늘의 일정</h3>${upcoming.slice(0, 4).map(Planner.itemHTML).join("")}<button class="btn ghost block small" data-go="planner">전체 일정 보기</button></div>` : ""}
     <div class="card"><h3>할 일</h3>
-      ${todos.length ? todos.map((t) => `<div class="check-item" data-go="${t.tab}"><span>▫️ ${esc(t.text)}</span></div>`).join("") : `<p class="muted">할 일이 없어요. 완벽해요 ✨</p>`}
+      ${todos.length ? todos.map((t) => `<div class="todo-item" data-go="${t.tab}" role="button" tabindex="0">
+        <span class="dot"></span><span class="txt">${esc(t.text)}</span><span class="chev">›</span></div>`).join("") : `<p class="muted">할 일이 없어요. 완벽해요 ✨</p>`}
     </div>
     <div class="card"><h3>추후 확인</h3>
       <div class="muted" style="font-size:13px;">키노트 일정 · 셔틀 세부 노선 · Expo 공식 시간 — 공식 발표 시 앱에 반영됩니다.</div>
     </div>`;
   $$("#view-home [data-go]").forEach((el) => el.onclick = () => switchTab(el.dataset.go));
+  $$("#view-home [data-pitem]").forEach((el) => el.onclick = () => {
+    const day = vegasDateStr();
+    switchTab("planner");
+    Planner.openItem(el.dataset.pitem, day);
+  });
   Weather.refresh();
 };
 
@@ -595,7 +638,7 @@ document.addEventListener("DOMContentLoaded", () => {
   applyTheme();
   Notify.start();
   tickClock();
-  setInterval(tickClock, 30000);
+  setInterval(tickClock, 10000);
   $$("#tabbar button").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
   if (!S().onboarded) startOnboarding();
   else { switchTab("home"); maybeShowInstallGuide(); }

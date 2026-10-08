@@ -114,21 +114,27 @@ const Planner = {
   },
   toMin(t) { if (!t) return null; const [h, m] = t.split(":").map(Number); return h * 60 + m; },
 
-  /* ---- timetable (8:00–20:00, 1px = 1min) ---- */
+  /* ---- timetable (기본 8:00–20:00, 일정에 맞춰 자동 확장) ---- */
   renderTimetable(date) {
     const items = this.itemsFor(date);
-    const START = 8 * 60, END = 20 * 60, GUTTER = 46;
-    if (!items.length) return `<div class="empty-state"><div class="big">🗓️</div><p>이 날의 일정이 비어 있어요.<br>세션 탭에서 관심 세션을 담아보세요.</p></div>`;
+    const PX = 1.4, PAD = 12, GUTTER = 46; // PX: 1분당 픽셀, PAD: 맨 위·아래 시간 라벨 여백
+    if (!items.length) return `<div class="empty-state"><div class="big">🗓️</div><p>이 날의 일정이 비어 있어요.<br>세션 탭에서 관심 세션을 담아보세요.</p>
+      <button class="btn ghost small" id="pl-go-sessions">세션 둘러보기</button></div>`;
 
-    const blocks = [];
+    const raw = [];
     items.forEach((it) => {
       const s = this.toMin(it.start || it.start_time);
       let e = this.toMin(it.end || it.end_time);
       if (s == null) return;
-      if (e == null || e <= s) e = s + 60;
-      if (e <= START || s >= END) return;
-      blocks.push({ it, s: Math.max(s, START), e: Math.min(e, END) });
+      if (e == null || e <= s) e = Math.min(s + 60, 24 * 60);
+      raw.push({ it, s, e });
     });
+    // 이른 아침·밤 일정도 잘리지 않게 표시 범위를 넓힘 (정시 단위)
+    let START = 8 * 60, END = 20 * 60;
+    raw.forEach((b) => { START = Math.min(START, Math.floor(b.s / 60) * 60); END = Math.max(END, Math.ceil(b.e / 60) * 60); });
+    END = Math.min(END, 24 * 60);
+    const y = (min) => Math.round((min - START) * PX) + PAD;
+    const blocks = raw.map((b) => ({ ...b, s: Math.max(b.s, START), e: Math.min(b.e, END) }));
 
     // 겹치는 블록은 가로로 나눔
     const sorted = [...blocks].sort((a, b) => a.s - b.s || a.e - b.e);
@@ -144,15 +150,14 @@ const Planner = {
       b.cols = mx;
     });
 
-    let grid = "";
-    for (let h = 8; h <= 20; h++) {
-      grid += `<div class="tt-hour" style="top:${h * 60 - START}px"><span>${h}:00</span></div>`;
+    let html = "";
+    for (let h = START / 60; h <= END / 60; h++) {
+      html += `<div class="tt-hour" style="top:${y(h * 60)}px"><span>${h === 24 ? "24" : h}:00</span></div>`;
     }
 
-    let html = grid;
     blocks.forEach((b) => {
-      const top = b.s - START;
-      const hgt = Math.max(b.e - b.s, 46);
+      const top = y(b.s);
+      const hgt = Math.max(Math.round((b.e - b.s) * PX) - 2, 46);
       // 겹치는 블록은 가로로 나란히 배치 (시간표식)
       const colW = `(100% - ${GUTTER}px - 4px) / ${b.cols}`;
       const left = `calc(${GUTTER}px + ${colW} * ${b.col})`;
@@ -163,18 +168,25 @@ const Planner = {
       const time = `${b.it.start || b.it.start_time || ""}${(b.it.end || b.it.end_time) ? "–" + (b.it.end || b.it.end_time) : ""}`;
       const kst = kstRange(date, b.it.start || b.it.start_time, b.it.end || b.it.end_time);
       const note = b.it.note || (S().session_notes[b.it.session_id || b.it.id] || {}).memo;
+      // 블록 높이에 맞춰 보여줄 줄 수를 정함 (글자가 반쯤 잘려 보이지 않게)
+      const LINE = 17.6, VLINE = 18;
+      let avail = hgt - 14 - 19 - (kst ? 17 : 0);
+      const showVenue = !!b.it.venue && avail - VLINE >= LINE;
+      if (showVenue) avail -= VLINE;
+      const titleLines = Math.max(1, Math.min(3, Math.floor(avail / LINE)));
+      const showNote = !!note && avail - titleLines * LINE >= VLINE;
       html += `<div class="tt-block" data-pitem="${esc(b.it.session_id || b.it.id)}"
         style="top:${top}px;height:${hgt}px;left:${left};width:${width};z-index:${z};${vStyle}" role="button" tabindex="0">
         <div class="tt-time">${esc(time)}</div>
         ${kst ? `<div class="tt-kst">🇰🇷${kst}</div>` : ""}
-        <div class="tt-title">${isFixed ? `<span class="badge warn">고정</span> ` : ""}<strong>${esc(b.it.title)}</strong></div>
-        ${b.it.venue ? `<div class="tt-venue">📍 ${esc(b.it.venue)}</div>` : ""}
-        ${note ? `<div class="tt-venue">📝 ${esc(note)}</div>` : ""}
+        <div class="tt-title" style="-webkit-line-clamp:${titleLines}">${isFixed ? `<span class="badge warn">고정</span> ` : ""}<strong>${esc(b.it.title)}</strong></div>
+        ${showVenue ? `<div class="tt-venue">📍 ${esc(b.it.venue)}</div>` : ""}
+        ${showNote ? `<div class="tt-venue">📝 ${esc(note)}</div>` : ""}
       </div>`;
     });
 
-    // 이동 레이어: 일정 사이 간격에만 표시 (겹치면 생략)
-    const ordered = [...blocks].sort((a, b) => a.s - b.s);
+    // 이동 레이어: 일정 사이 빈 시간에 표시 (겹치면 생략)
+    const ordered = [...blocks].sort((a, b) => a.s - b.s || a.e - b.e);
     ordered.forEach((b, i) => {
       const nxt = ordered[i + 1];
       if (!nxt) return;
@@ -183,7 +195,12 @@ const Planner = {
       const tr = this.travelBetween(b.it, nxt.it);
       if (!tr) return;
       const bad = gap < tr.minutes;
-      html += `<div class="tt-travel${bad ? " bad" : ""}" style="top:${b.e - START - 11}px;left:${GUTTER + 6}px" title="${esc(tr.label)}">🚶 ${tr.minutes}분 · ${esc(tr.mode)}${bad ? " ⚠️" : ""}</div>`;
+      const icon = tr.mode === "도보" ? "🚶" : tr.mode.includes("택시") ? "🚕" : "🚌";
+      // 빈 시간이 넉넉하면 앞 일정 바로 아래, 좁으면 빈 시간 한가운데에 표시
+      const gapPx = gap * PX;
+      const top = gapPx >= 44 ? y(b.e) + 8 : y(b.e) + gapPx / 2 - 11;
+      const dest = b.it.venue !== nxt.it.venue && nxt.it.venue ? ` → ${nxt.it.venue}` : "";
+      html += `<div class="tt-travel${bad ? " bad" : ""}" style="top:${Math.round(top)}px;left:${GUTTER + 6}px" title="${esc(tr.label)}">${icon} ${tr.minutes}분 · ${esc(tr.mode)}${esc(dest)}${bad ? ` ⚠️ 여유 ${gap}분` : ""}</div>`;
     });
 
     // 지금 선
@@ -191,11 +208,11 @@ const Planner = {
       const p = vegasParts();
       const nowMin = (+p.hour) * 60 + (+p.minute);
       if (nowMin >= START && nowMin <= END) {
-        html += `<div class="tt-now" style="top:${nowMin - START}px"><span>지금</span></div>`;
+        html += `<div class="tt-now" style="top:${y(nowMin)}px"><span>지금</span></div>`;
       }
     }
 
-    return `<div class="tt-wrap"><div class="tt-grid" style="height:${END - START}px">${html}</div>
+    return `<div class="tt-wrap"><div class="tt-grid" style="height:${y(END) + PAD}px">${html}</div>
       <div class="tt-note muted">탭하면 상세 보기 · 🇰🇷는 한국 시간</div></div>`;
   },
 
@@ -243,14 +260,14 @@ const Planner = {
       <div class="muted" style="font-size:13px;margin-bottom:10px;">
         ${it.date ? esc(dayLabel(it.date)) + " " : ""}${esc(it.start_time || "")}${it.end_time ? "–" + esc(it.end_time) : ""} (현지)
         ${kst ? `<br>🇰🇷 ${kst}` : ""}
-        ${it.venue ? `<br>📍 ${esc(it.venue)}${it.room ? " · " + esc(it.room) : ""}` : ""}
+        ${it.venue ? `<br>📍 ${esc(it.venue)}${roomLabel(it) ? " · " + esc(roomLabel(it)) : ""}` : ""}
         ${it.code ? `<br><span class="badge">${esc(it.code)}</span>` : ""}
       </div>
       <label class="field">예약 상태</label>
       <div class="chip-row" id="pi-res">
-        ${["reserved", "waitlist", "none"].map((v) => `<button class="chip${res === v ? " on" : ""}" data-v="${v}">${v === "reserved" ? "예약됨" : v === "waitlist" ? "대기" : "미예약"}</button>`).join("")}
+        ${["reserved", "waitlist", "none"].map((v) => `<button class="chip${res === v ? " on" : ""}" data-v="${v}">${RES_LABEL[v]}</button>`).join("")}
       </div>
-      <label class="field" style="margin-top:12px;">별점</label>
+      <label class="field" style="display:block;margin-top:12px;">별점</label>
       <div class="stars" id="pi-stars">${[1, 2, 3, 4, 5].map((i) => `<span data-s="${i}" class="${i <= n.rating ? "on" : ""}">★</span>`).join("")}</div>
       <label class="field">메모</label>
       <textarea id="pi-memo" rows="3" placeholder="배운 점, 후속 액션 등">${esc(n.memo)}</textarea>
@@ -318,18 +335,32 @@ const Planner = {
     Store.save(); Views.planner();
   },
 
-  exportICS() {    const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//reinvent2026//trip//KO"];
+  exportICS() {
+    const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//reinvent2026//trip//KO", "CALSCALE:GREGORIAN",
+      "X-WR-CALNAME:re:Invent 2026"];
+    // 행사 기간(11/29–12/5)은 PST(UTC-8) — UTC로 바꿔 넣어야 한국 폰 캘린더에서도 시각이 맞음
+    const utc = (date, t) => {
+      const [y, mo, da] = date.split("-").map(Number), [h, mi] = t.split(":").map(Number);
+      return new Date(Date.UTC(y, mo - 1, da, h + 8, mi)).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+    };
+    const txt = (v) => String(v || "").replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+    const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+    let count = 0;
     DAYS.forEach((d) => {
       this.itemsFor(d).forEach((it) => {
         const start = it.start || it.start_time, end = it.end || it.end_time;
         if (!start) return;
-        const dt = (date, t) => date.replace(/-/g, "") + "T" + t.replace(":", "") + "00";
-        lines.push("BEGIN:VEVENT", `UID:${(it.session_id || it.id)}@reinvent2026`,
-          `DTSTART:${dt(d, start)}`, ...(end ? [`DTEND:${dt(d, end)}`] : []),
-          `SUMMARY:${(it.title || "").replace(/\n/g, " ")}`,
-          `LOCATION:${(it.venue || "").replace(/\n/g, " ")}`, "END:VEVENT");
+        const room = it.kind === "session" ? roomLabel(it) : "";
+        const desc = [it.code, it.note || (S().session_notes[it.session_id || it.id] || {}).memo].filter(Boolean).join("\n");
+        lines.push("BEGIN:VEVENT", `UID:${(it.session_id || it.id)}-${d}@reinvent2026`, `DTSTAMP:${stamp}`,
+          `DTSTART:${utc(d, start)}`, (end && end > start ? `DTEND:${utc(d, end)}` : "DURATION:PT1H"),
+          `SUMMARY:${txt(it.title)}`,
+          `LOCATION:${txt([it.venue, room].filter(Boolean).join(" · "))}`,
+          ...(desc ? [`DESCRIPTION:${txt(desc)}`] : []), "END:VEVENT");
+        count++;
       });
     });
+    if (!count) { toast("내보낼 일정이 없어요"); return; }
     lines.push("END:VCALENDAR");
     download("reinvent2026-schedule.ics", lines.join("\r\n"), "text/calendar");
     toast("ICS 파일을 저장했어요");
@@ -420,7 +451,8 @@ Views.planner = function () {
   el.innerHTML = `
     <div class="day-tabs">${DAYS.map((d) => {
       const w = Weather.iconFor(d);
-      return `<button data-day="${d}" class="${d === plannerDay ? "active" : ""}">${dayLabel(d)}${w ? " " + w : ""}</button>`;
+      const cls = [d === plannerDay ? "active" : "", d === vegasDateStr() ? "today" : ""].filter(Boolean).join(" ");
+      return `<button data-day="${d}" class="${cls}"${d === plannerDay ? ' aria-current="date"' : ""}>${dayLabel(d)}${w ? " " + w : ""}</button>`;
     }).join("")}</div>
     <div id="pl-timeline">${Planner.renderTimetable(plannerDay)}</div>
     <div class="card"><h3>🗺️ 동선 정보</h3>
@@ -430,15 +462,21 @@ Views.planner = function () {
       <button class="btn ghost block left info-btn" id="ri-strategy">📌 베뉴 이동 전략</button>
     </div>
     <div class="card"><h3>고정 이벤트 표시</h3>
-      ${FIXED_EVENTS.filter((f) => f.date === plannerDay).map((f) => `
-        <label class="check-item"><input type="checkbox" data-fx="${f.id}" ${S().fixed_off.includes(f.id) ? "" : "checked"}>
-        <span>${esc(f.start)} ${esc(f.title)} <span class="muted">· ${esc(f.venue)}</span></span></label>`).join("") || `<p class="muted">이 날의 고정 이벤트가 없어요</p>`}
+      ${FIXED_EVENTS.filter((f) => f.date === plannerDay).map((f0) => {
+        const f = { ...f0, ...((S().fixed_edits || {})[f0.id] || {}) };
+        return `<label class="check-item"><input type="checkbox" data-fx="${f.id}" ${S().fixed_off.includes(f.id) ? "" : "checked"}>
+        <span>${esc(f.start)} ${esc(f.title)}${f.venue ? ` <span class="muted">· ${esc(f.venue)}</span>` : ""}</span></label>`;
+      }).join("") || `<p class="muted">이 날의 고정 이벤트가 없어요</p>`}
     </div>
     <div class="row">
       <button class="btn ghost small" id="pl-ics">📅 ICS 내보내기</button>
       <button class="btn ghost small" id="pl-report">📋 일정 보고서</button>
     </div>`;
   $$("#view-planner [data-day]").forEach((b) => b.onclick = () => { plannerManual = true; plannerDay = b.dataset.day; Views.planner(); });
+  const act = $("#view-planner .day-tabs .active");
+  if (act) act.scrollIntoView({ block: "nearest", inline: "center" });
+  const goS = $("#pl-go-sessions");
+  if (goS) goS.onclick = () => switchTab("sessions");
   $("#ri-venues").onclick = () => openDrawer("베뉴 6곳", RouteInfo.venuesHTML());
   $("#ri-shuttle").onclick = () => openDrawer("베뉴 간 셔틀", RouteInfo.shuttleHTML());
   $("#ri-airport").onclick = () => openDrawer("공항 → 호텔 이동", RouteInfo.airportHTML());
@@ -446,9 +484,9 @@ Views.planner = function () {
   $$("#view-planner [data-fx]").forEach((c) => c.onchange = () => Planner.toggleFixed(c.dataset.fx));
   $("#pl-ics").onclick = () => Planner.exportICS();
   $("#pl-report").onclick = () => Planner.reportView();
-  $$("#pl-timeline [data-pitem]").forEach((it) => it.addEventListener("click", () => {
-    const id = it.dataset.pitem;
-    if (!id) return;
-    Planner.openItem(id, plannerDay);
-  }));
+  $$("#pl-timeline [data-pitem]").forEach((it) => {
+    const open = () => { const id = it.dataset.pitem; if (id) Planner.openItem(id, plannerDay); };
+    it.addEventListener("click", open);
+    it.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+  });
 };
