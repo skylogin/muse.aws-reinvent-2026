@@ -1,5 +1,5 @@
 {
-  "background_color": "#0f1f3d",
+  "background_color": "#0b1b33",
   "description": "AWS re:Invent 2026 (11/30–12/4, 라스베가스) 올인원 출장 앱",
   "display": "standalone",
   "icons": [
@@ -8,6 +8,24 @@
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
+    },
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "lang": "ko",

@@ -23,8 +23,8 @@ Views.prep = function () {
   const dtDoneCount = dtasks.filter((x) => dDone[x.id]).length;
 
   el.innerHTML = `
-    <div class="card"><h3>🗓️ 출발 전 할 일 <span class="badge ${dd <= 7 ? "warn" : "info"}">D-${dd > 0 ? dd : "day"}</span></h3>
-      <div class="progress"><div style="width:${Math.round(dtDoneCount / dtasks.length * 100)}%"></div></div>
+    <div class="card"><h3>🗓️ 출발 전 할 일 <span class="badge ${dd <= 7 ? "warn" : "info"}">${dd > 0 ? `D-${dd}` : dd === 0 ? "D-Day" : `D+${-dd}`}</span></h3>
+      <div class="progress${dtDoneCount === dtasks.length ? " done" : ""}"><div style="width:${Math.round(dtDoneCount / dtasks.length * 100)}%"></div></div>
       <div class="muted" style="font-size:12px;margin-bottom:6px;">${dtDoneCount}/${dtasks.length} 완료</div>
       ${dtasks.map((x) => {
         const urgent = dd <= x.d;
@@ -50,13 +50,13 @@ Views.prep = function () {
     </div>
 
     <div class="card"><h3>🎒 준비물 체크리스트</h3>
-      <div class="progress"><div style="width:${cl.length ? Math.round(done / cl.length * 100) : 0}%"></div></div>
+      <div class="progress${cl.length && done === cl.length ? " done" : ""}"><div style="width:${cl.length ? Math.round(done / cl.length * 100) : 0}%"></div></div>
       <div class="muted" style="font-size:12px;margin-bottom:6px;">${done}/${cl.length} 완료</div>
       ${cl.map((c) => `<div class="check-item${c.done ? " done" : ""}">
         <label class="grow"><input type="checkbox" data-ck="${c.id}" ${c.done ? "checked" : ""}><span>${esc(c.item)}</span></label>
         <span class="row-actions">
-          <button class="icon-btn" data-ckedit="${c.id}" title="수정">✏️</button>
-          <button class="icon-btn" data-ckdel="${c.id}" title="삭제">🗑️</button>
+          <button class="icon-btn" data-ckedit="${c.id}" title="수정" aria-label="수정">✏️</button>
+          <button class="icon-btn" data-ckdel="${c.id}" title="삭제" aria-label="삭제">🗑️</button>
         </span>
       </div>`).join("")}
       <button class="btn ghost block small" id="ck-add" style="margin-top:8px;">＋ 항목 추가</button>

@@ -7,23 +7,26 @@ Views.settings = function () {
   $("#view-settings").innerHTML = `
     <div class="card"><h3>👤 프로필</h3>
       <div class="kv"><span>닉네임</span><b>${esc(st.profile.nickname) || "게스트"}</b></div>
-      <div class="kv"><span>관심 토픽</span><b>${topics.length ? esc(topics.slice(0, 3).join(", ")) + (topics.length > 3 ? "…" : "") : "미설정"}</b></div>
+      <div class="kv"><span>관심 토픽</span><b>${topics.length ? esc(topics.slice(0, 3).join(", ")) + (topics.length > 3 ? ` 외 ${topics.length - 3}개` : "") : "미설정"}</b></div>
       <button class="btn ghost block" id="set-profile">프로필 수정</button>
     </div>
     <div class="card"><h3>📲 기기·백업</h3>
       <p class="muted" style="font-size:13px;">이 앱은 서버 없이 이 기기에만 저장됩니다.</p>
       <div class="row">
-        <button class="btn ghost small" id="set-transfer">모바일로 옮기기</button>
-        <button class="btn ghost small" id="set-backup">백업 내보내기</button>
+        <button class="btn ghost small" id="set-transfer">📤 다른 기기로 옮기기</button>
+        <button class="btn ghost small" id="set-import">📥 가져오기</button>
       </div>
       <div class="row" style="margin-top:8px;">
-        <button class="btn ghost small" id="set-install">설치 안내 다시 보기</button>
+        <button class="btn ghost small" id="set-backup">💾 백업 파일 저장</button>
+        <button class="btn ghost small" id="set-install">📲 설치 안내</button>
       </div>
     </div>
-    <div class="card"><h3>🎨 화면</h3>
-      <div class="row">
-        <button class="btn ghost small" id="set-theme">🌙 다크모드</button>
+    <div class="card"><h3>🎨 화면 테마</h3>
+      <div class="chip-row" id="set-theme">
+        ${[["system", "📱 시스템 설정"], ["light", "☀️ 라이트"], ["dark", "🌙 다크"]].map(([v, l]) =>
+          `<button class="chip${(st.theme || "system") === v ? " on" : ""}" data-theme-v="${v}">${l}</button>`).join("")}
       </div>
+      <p class="muted" style="font-size:12px;margin:6px 0 0;">'시스템 설정'은 휴대폰의 라이트/다크 모드를 따라가요.</p>
     </div>
     <div class="card"><h3>🔔 세션 시작 알림</h3>
       <div class="row">
@@ -40,16 +43,17 @@ Views.settings = function () {
   $("#set-profile").onclick = Settings.editProfile;
   $("#set-transfer").onclick = () => TransferUI.showExport();
   $("#set-backup").onclick = () => TransferUI.exportFile();
-  $("#set-install").onclick = () => { S().install_dismissed = false; maybeShowInstallGuide(); };
-  $("#set-theme").onclick = () => {
-    S().theme = S().theme === "dark" ? "light" : "dark";
+  $("#set-import").onclick = () => TransferUI.showImport();
+  $("#set-install").onclick = () => maybeShowInstallGuide(true);
+  $$("#set-theme [data-theme-v]").forEach((b) => b.onclick = () => {
+    S().theme = b.dataset.themeV;
     Store.save(); applyTheme(); Views.settings();
-    toast(S().theme === "dark" ? "다크모드로 바꿨어요 🌙" : "라이트모드로 바꿨어요 ☀️");
-  };
+    toast({ system: "시스템 설정을 따라가요 📱", light: "라이트모드로 바꿨어요 ☀️", dark: "다크모드로 바꿨어요 🌙" }[S().theme]);
+  });
   $("#set-notify").onclick = async () => {
     if (S().notify.on) { Notify.disable(); }
     else {
-      const minutes = Number(($("#set-notify-min") || {}).value) || 15;
+      const minutes = S().notify.minutes || 15; // 사용자가 고른 알림 시점 유지
       const ok = await Notify.enable(minutes);
       if (!ok) return;
     }
@@ -66,8 +70,8 @@ Views.settings = function () {
     $$("#modal-root [data-min]").forEach((b) => b.onclick = () => {
       S().notify.minutes = Number(b.dataset.min);
       Store.save(); closeModal(); Views.settings();
+      if (S().notify.on) Notify.start();
     });
     $("#min-cancel").onclick = closeModal;
   };
-  applyTheme();
 };
