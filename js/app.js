@@ -97,7 +97,6 @@ function defaultState() {
     install_dismissed: false,
     fx_rate: 1450,
     theme: (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light",
-    mock_sessions: false,   // true -> 2025 샘플 세션으로 체험 (테스트용)
     notify: { on: false, minutes: 15 },  // 관심 세션 시작 알림 (앱이 켜져 있을 때만 동작)
     weather_cache: null
   };
@@ -177,13 +176,11 @@ function openDrawer(title, html) {
 }
 function closeDrawer() { const r = $("#drawer-root"); if (r) r.innerHTML = ""; }
 
-/* ---------- sessions accessor (supports 2025 mock mode) ---------- */
+/* ---------- sessions accessor ---------- */
 function allSessions() {
-  if (S() && S().mock_sessions && window.MOCK_SESSIONS_2025) return window.MOCK_SESSIONS_2025;
   return (window.APP_DATA && window.APP_DATA.sessions) || [];
 }
 function sessionsPending() {
-  if (S() && S().mock_sessions) return false;
   return !!(window.APP_DATA.meta && window.APP_DATA.meta.sessions_pending);
 }
 
@@ -438,7 +435,6 @@ Views.home = function () {
   if (clDone < cl.length) todos.push({ text: `준비물 ${clDone}/${cl.length} 완료`, tab: "prep" });
 
   const pending = sessionsPending();
-  const mockOn = !!(S().mock_sessions && window.MOCK_SESSIONS_2025);
   const upcoming = ph === "during" ? Planner.todayItems() : [];
 
   $("#view-home").innerHTML = `
@@ -449,7 +445,7 @@ Views.home = function () {
       <div id="home-weather" style="font-size:13px;opacity:.85;margin-top:2px;">⛅ 날씨 불러오는 중…</div>
     </div>
     ${pending ? `<div class="notice">📡 세션 카탈로그 수집 대기 중 — 공식 카탈로그에서 수집하면 세션 탭이 활성화됩니다.</div>` : ""}
-    ${mockOn ? `<div class="notice">🧪 <strong>2025 샘플 세션</strong>으로 체험 중이에요. 실제 데이터가 아닙니다 — 설정에서 끌 수 있어요.</div>` : ""}
+
     ${ph === "during" && upcoming.length ? `<div class="card"><h3>오늘의 일정</h3>${upcoming.slice(0, 4).map(Planner.itemHTML).join("")}<button class="btn ghost block small" data-go="planner">전체 일정 보기</button></div>` : ""}
     <div class="card"><h3>할 일</h3>
       ${todos.length ? todos.map((t) => `<div class="check-item" data-go="${t.tab}"><span>▫️ ${esc(t.text)}</span></div>`).join("") : `<p class="muted">할 일이 없어요. 완벽해요 ✨</p>`}
@@ -487,13 +483,6 @@ const Settings = {
     $("#pf-cancel").onclick = closeModal;
   },
 
-  toggleMock() {
-    if (!window.MOCK_SESSIONS_2025) { toast("샘플 데이터 파일이 없어요"); return; }
-    S().mock_sessions = !S().mock_sessions;
-    Store.save();
-    toast(S().mock_sessions ? "🧪 2025 샘플 세션으로 체험해요" : "샘플 세션을 껐어요");
-    if (Views[currentTab]) Views[currentTab]();
-  }
 };
 
 /* packing checklist defaults */

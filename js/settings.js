@@ -23,14 +23,12 @@ Views.settings = function () {
     <div class="card"><h3>🎨 화면</h3>
       <div class="row">
         <button class="btn ghost small" id="set-theme">🌙 다크모드</button>
-        <button class="btn ghost small" id="set-mock">🧪 2025 샘플 세션</button>
       </div>
-      ${st.mock_sessions ? `<p class="muted" style="font-size:12px;margin:6px 0 0;">🧪 2025 샘플 세션으로 체험 중 — 실제 데이터가 아닙니다.</p>` : ""}
     </div>
     <div class="card"><h3>🔔 세션 시작 알림</h3>
       <div class="row">
         <button class="btn ghost small" id="set-notify">${st.notify.on ? "🔕 알림 끄기" : "🔔 알림 켜기"}</button>
-        <select id="set-notify-min" aria-label="알림 시점">${[5, 10, 15, 30].map((m) => `<option value="${m}"${st.notify.minutes === m ? " selected" : ""}>${m}분 전</option>`).join("")}</select>
+        <button class="btn ghost small" id="set-notify-min">${st.notify.minutes}분 전 ▾</button>
       </div>
       <p class="muted" style="font-size:12px;margin:6px 0 0;">앱이 켜져 있을 때 관심 세션 시작 전에 알려줘요.</p>
     </div>
@@ -48,7 +46,6 @@ Views.settings = function () {
     Store.save(); applyTheme(); Views.settings();
     toast(S().theme === "dark" ? "다크모드로 바꿨어요 🌙" : "라이트모드로 바꿨어요 ☀️");
   };
-  $("#set-mock").onclick = () => Settings.toggleMock();
   $("#set-notify").onclick = async () => {
     if (S().notify.on) { Notify.disable(); }
     else {
@@ -58,7 +55,19 @@ Views.settings = function () {
     }
     Views.settings();
   };
-  const nmSel = $("#set-notify-min");
-  if (nmSel) nmSel.onchange = () => { S().notify.minutes = Number(nmSel.value) || 15; Store.save(); };
+  $("#set-notify-min").onclick = () => {
+    const cur = S().notify.minutes;
+    openModal(`
+      <h2>알림 시점</h2>
+      <p class="muted" style="font-size:13px;">세션 시작 몇 분 전에 알릴까요?</p>
+      ${[5, 10, 15, 30].map((m) => `
+        <button class="btn ${m === cur ? "" : "ghost"} block" data-min="${m}">${m}분 전${m === cur ? " ✓" : ""}</button>`).join("")}
+      <button class="btn ghost block" id="min-cancel">취소</button>`);
+    $$("#modal-root [data-min]").forEach((b) => b.onclick = () => {
+      S().notify.minutes = Number(b.dataset.min);
+      Store.save(); closeModal(); Views.settings();
+    });
+    $("#min-cancel").onclick = closeModal;
+  };
   applyTheme();
 };

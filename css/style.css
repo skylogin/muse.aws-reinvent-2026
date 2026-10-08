@@ -44,7 +44,7 @@ body {
   font-size: 11px; color: var(--muted); cursor: pointer;
 }
 #tabbar button .ico { font-size: 20px; }
-#tabbar button.active { color: var(--navy); font-weight: 700; }
+#tabbar button.active { color: #ff9900; font-weight: 700; }
 
 .view { display: none; padding: 14px 14px 20px; }
 .view.active { display: block; }
@@ -131,12 +131,12 @@ label.field { font-size: 13px; font-weight: 600; color: var(--muted); }
 .day-tabs { display: flex; gap: 6px; overflow-x: auto; padding: 4px 0 10px; }
 .day-tabs button { flex: 0 0 auto; border: 1px solid var(--line); background: #fff;
   border-radius: 10px; padding: 8px 12px; font-size: 13px; cursor: pointer; }
-.day-tabs button.active { background: var(--navy); color: #fff; border-color: var(--navy); font-weight: 700; }
+.day-tabs button.active { background: var(--accent); color: #1a1a1a; border-color: var(--accent); font-weight: 700; }
 
 .chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
 .chip { border: 1px solid var(--line); background: #fff; border-radius: 999px;
   padding: 6px 12px; font-size: 13px; cursor: pointer; }
-.chip.on { background: var(--navy); color: #fff; border-color: var(--navy); }
+.chip.on { background: var(--accent); color: #1a1a1a; border-color: var(--accent); font-weight: 700; }
 
 table.plain { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 table.plain td, table.plain th { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; }

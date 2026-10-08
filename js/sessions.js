@@ -144,8 +144,6 @@ const Sessions = {
 
 Views.sessions = function () {
   const el = $("#view-sessions");
-  const mockOn = !!(S().mock_sessions && window.MOCK_SESSIONS_2025);
-  const mockBanner = mockOn ? `<div class="notice">🧪 <strong>2025 샘플 세션</strong>으로 체험 중이에요 (테스트용). 설정에서 끌 수 있어요.</div>` : "";
   const modeBtns = `
     <div class="chip-row">
       <button class="chip${Sessions.mode === "session" ? " on" : ""}" data-m="session">세션</button>
@@ -160,7 +158,7 @@ Views.sessions = function () {
         <p>세션 목록을 가져오지 못했어요.<br>공식 카탈로그에서 다시 수집하면<br>여기에 2,000개+ 세션이 표시됩니다.</p>
       </div>
       <div class="card"><h3>최근 검색</h3>${Sessions.historyHTML()}</div>`;
-    el.innerHTML = `${mockBanner}${modeBtns}${searchBox}${body}`;
+    el.innerHTML = `${modeBtns}${searchBox}${body}`;
     bindSessionChrome();
     bindHitCards();
     return;
@@ -200,7 +198,7 @@ Views.sessions = function () {
       }).join("") || `<div class="empty-state">조건에 맞는 세션이 없어요</div>`}`;
   }
 
-  el.innerHTML = `${mockBanner}${modeBtns}${searchBox}${body}`;
+  el.innerHTML = `${modeBtns}${searchBox}${body}`;
   bindSessionChrome();
   bindHitCards();
 };
