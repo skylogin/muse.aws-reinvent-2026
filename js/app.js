@@ -28,15 +28,68 @@ function openModal(html, opts) {
 }
 function closeModal() { $("#modal-root").innerHTML = ""; document.body.classList.remove("modal-open"); }
 
+/* 하단 시트 (bottom sheet): 손잡이 + 제목/닫기 + 스크롤 본문 + 하단 고정 버튼
+   opts: { title, body, actions, sticky } — 손잡이·제목줄을 아래로 끌면 닫힘 */
+function openSheet(opts) {
+  const root = $("#modal-root");
+  root.innerHTML = `<div class="overlay" id="modal-overlay">
+    <div class="sheet bs" role="dialog" aria-modal="true" aria-label="${esc(opts.title || "")}">
+      <div class="bs-drag">
+        <div class="bs-grab" aria-hidden="true"></div>
+        <div class="bs-head"><h2>${esc(opts.title || "")}</h2>
+          <button class="bs-close" type="button" aria-label="닫기">✕</button></div>
+      </div>
+      <div class="bs-body">${opts.body || ""}</div>
+      ${opts.actions ? `<div class="bs-actions">${opts.actions}</div>` : ""}
+    </div></div>`;
+  const ov = $("#modal-overlay"), sheet = $(".bs", ov), drag = $(".bs-drag", ov);
+  ov._sticky = !!opts.sticky;
+  document.body.classList.add("modal-open");
+  const dismiss = () => {
+    if (!$("#modal-overlay")) return;
+    sheet.style.transition = "transform .2s ease";
+    sheet.style.transform = "translateY(100%)";
+    ov.style.transition = "opacity .2s ease";
+    ov.style.opacity = "0";
+    setTimeout(() => { if ($("#modal-overlay") === ov) closeModal(); }, 200);
+  };
+  ov._dismiss = dismiss;
+  ov.addEventListener("click", (e) => { if (e.target === ov && !ov._sticky) dismiss(); });
+  $(".bs-close", ov).onclick = dismiss;
+  // 아래로 스와이프해서 닫기
+  let y0 = null, dy = 0;
+  drag.addEventListener("touchstart", (e) => { y0 = e.touches[0].clientY; dy = 0; sheet.style.transition = "none"; }, { passive: true });
+  drag.addEventListener("touchmove", (e) => {
+    if (y0 == null) return;
+    dy = Math.max(0, e.touches[0].clientY - y0);
+    sheet.style.transform = `translateY(${dy}px)`;
+  }, { passive: true });
+  drag.addEventListener("touchend", () => {
+    if (y0 == null) return;
+    y0 = null;
+    if (dy > 80) dismiss();
+    else { sheet.style.transition = "transform .2s ease"; sheet.style.transform = ""; }
+  });
+  return ov;
+}
+
 /* Esc: 모달 → 드로어 → 보고서 순으로 닫기 (PC·키보드 사용 시) */
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   const ov = $("#modal-overlay");
-  if (ov) { if (!ov._sticky) closeModal(); return; }
+  if (ov) { if (!ov._sticky) (ov._dismiss || closeModal)(); return; }
   if ($("#drawer-overlay")) { closeDrawer(); return; }
   const rp = $("#report-screen.open");
   if (rp) rp.classList.remove("open");
 });
+
+/* 확대 막기: 뷰포트(user-scalable=no) + CSS touch-action으로 더블탭 확대 차단,
+   iOS Safari는 뷰포트 설정을 무시하므로 핀치 제스처를 직접 막음 */
+["gesturestart", "gesturechange", "gestureend"].forEach((t) =>
+  document.addEventListener(t, (e) => e.preventDefault(), { passive: false }));
+document.addEventListener("touchmove", (e) => {
+  if (e.touches.length > 1 || (typeof e.scale === "number" && e.scale !== 1)) e.preventDefault();
+}, { passive: false });
 
 function download(filename, text, mime) {
   const blob = new Blob([text], { type: mime || "application/octet-stream" });
@@ -103,7 +156,7 @@ const LS_KEY = "reinvent2026.v1";
 function defaultState() {
   return {
     onboarded: false,
-    profile: { nickname: "", topics: [] },
+    profile: { nickname: "", topics: [], services: [] },
     favorites: [],
     reservations: {},       // session_id -> {status, updated_at}
     backups: {},             // session_id -> [session_id]
@@ -127,7 +180,10 @@ function defaultState() {
     notify: { on: false, minutes: 15 },  // 관심 세션 시작 알림 (앱이 켜져 있을 때만 동작)
     weather_cache: null,
     depart_done: {},   // 출발 전 할 일 완료 상태
-    budget_usd: 0      // 정산 예산 (USD)
+    budget_usd: 0,     // 정산 예산 (USD)
+    peers: [],         // 받은 동료 일정 [{id, name, days, visible, color, at}]
+    show_kr_hours: true, // 시간표에 한국 업무시간 표시
+    news: []           // 신규 발표 메모 [{id, title, q, at}]
   };
 }
 const Store = {
@@ -155,6 +211,21 @@ const FIXED_EVENTS = [
   { id: "replay", date: "2026-12-03", start: "19:30", end: "23:59", title: "re:Play 파티", venue: "Las Vegas Festival Grounds", note: "야외 — 방한·귀마개 필수", src: "guide" }
 ];
 
+/* 키노트: 공식 일정이 데이터(event_info.keynotes.items)에 들어오면 자동으로 고정 일정에 추가
+   형식: [{ date: "2026-12-01", start: "08:00", end: "10:30", title: "...", speaker: "...", venue: "The Venetian" }] */
+function keynoteInfo() { return (window.APP_DATA.event_info && window.APP_DATA.event_info.keynotes) || {}; }
+function keynoteEvents() {
+  const k = keynoteInfo(), items = Array.isArray(k.items) ? k.items : [];
+  return items.filter((x) => x && x.date && x.start).map((x, i) => ({
+    id: "keynote-" + (x.id || i), date: x.date, start: x.start, end: x.end || null,
+    title: "🎤 " + (x.title || "키노트") + (x.speaker ? ` — ${x.speaker}` : ""),
+    venue: x.venue || "", keynote: true, src: "official",
+    note: [k.korean_interpretation ? "한국어 동시통역(헤드셋)" : "", k.livestream ? "라이브스트림" : ""].filter(Boolean).join(" · ")
+  }));
+}
+/* 고정 이벤트 + 공개된 키노트 */
+function allFixed() { return FIXED_EVENTS.concat(keynoteEvents()); }
+
 /* ---------- tab router ---------- */
 const Views = {};
 let currentTab = "home";
@@ -168,7 +239,14 @@ function switchTab(name) {
 }
 
 /* ---------- header clock ---------- */
+let lastTickMin = "";
 function tickClock() {
+  const p = vegasParts();
+  const m = p.hour + ":" + p.minute;
+  if (m !== lastTickMin) {
+    lastTickMin = m;
+    if (currentTab === "home" && $("#home-upcoming") && Store.state) { $("#home-upcoming").innerHTML = Planner.upcomingHTML(); Planner.bindUpcoming(); }
+  }
   const v = $("#clock-vegas"), k = $("#clock-kst");
   if (v) v.textContent = `라스베가스 ${fmtDateTime(vegasParts())}`;
   if (k) k.textContent = `한국 ${fmtDateTime(tzParts("Asia/Seoul"))}`;
@@ -466,6 +544,7 @@ function finishOnboarding() {
   $("#onboarding").innerHTML = "";
   switchTab("home");
   maybeShowInstallGuide();
+  Share.checkLink(); // 공유 링크로 처음 들어온 경우
 }
 
 /* ---------- home view ---------- */
@@ -473,8 +552,8 @@ Views.home = function () {
   const st = S();
   const nick = st.profile.nickname ? esc(st.profile.nickname) + "님" : "게스트님";
   const dd = dday();
-  const ddText = dd > 0 ? `D-${dd}` : dd === 0 ? "D-Day" : `D+${-dd}`;
-  const ph = phase();
+  // 행사 기간(11/30–12/4)에는 'DAY n'으로
+  const ddText = dd > 0 ? `D-${dd}` : -dd <= 4 ? `DAY ${1 - dd}` : `D+${-dd}`;
 
   // todo: trip unset?
   const tripTodos = [];
@@ -489,9 +568,10 @@ Views.home = function () {
   const cl = Packing.list();
   const clDone = cl.filter((x) => x.done).length;
   if (clDone < cl.length) todos.push({ text: `준비물 ${clDone}/${cl.length} 완료`, tab: "prep" });
+  const today = vegasDateStr();
+  if (today >= "2026-12-03" && today <= "2026-12-05") todos.push({ text: "✈️ 귀국 준비 확인 (체크아웃·공항·면세)", tab: "prep" });
 
   const pending = sessionsPending();
-  const upcoming = ph === "during" ? Planner.todayItems() : [];
 
   $("#view-home").innerHTML = `
     <div class="card" style="background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;">
@@ -506,20 +586,35 @@ Views.home = function () {
     </div>
     ${pending ? `<div class="notice">📡 세션 카탈로그 수집 대기 중 — 공식 카탈로그에서 수집하면 세션 탭이 활성화됩니다.</div>` : ""}
 
-    ${ph === "during" && upcoming.length ? `<div class="card"><h3>오늘의 일정</h3>${upcoming.slice(0, 4).map(Planner.itemHTML).join("")}<button class="btn ghost block small" data-go="planner">전체 일정 보기</button></div>` : ""}
+    <div id="home-upcoming">${Planner.upcomingHTML()}</div>
+    ${(() => {
+      const items = News.items();
+      if (!items.length && vegasDateStr() < EVENT_START) return "";
+      return `<div class="card"><h3>📣 신규 발표 노트</h3>
+        ${items.length ? News.rowsHTML(items.slice(0, 3)) : `<p class="muted" style="margin:0;">키노트에서 들은 새 서비스·기능을 적어 두면 관련 세션을 바로 찾아 줘요.</p>`}
+        <button class="btn ghost block small" id="home-news">${items.length > 3 ? `전체 ${items.length}개 · ` : ""}발표 노트 열기</button></div>`;
+    })()}
     <div class="card"><h3>할 일</h3>
       ${todos.length ? todos.map((t) => `<div class="todo-item" data-go="${t.tab}" role="button" tabindex="0">
         <span class="dot"></span><span class="txt">${esc(t.text)}</span><span class="chev">›</span></div>`).join("") : `<p class="muted">할 일이 없어요. 완벽해요 ✨</p>`}
     </div>
-    <div class="card"><h3>추후 확인</h3>
-      <div class="muted" style="font-size:13px;">키노트 일정 · 셔틀 세부 노선 · Expo 공식 시간 — 공식 발표 시 앱에 반영됩니다.</div>
-    </div>`;
+    ${(() => {
+      const k = keynoteInfo(), kn = keynoteEvents();
+      return `<div class="card"><h3>🎤 키노트</h3>
+        ${kn.length ? kn.map((x) => `<div class="kv"><span>${esc(dayLabel(x.date))} ${esc(x.start)}</span><b>${esc(x.title.replace(/^🎤 /, ""))}</b></div>`).join("") +
+          `<p class="muted" style="font-size:12px;margin:6px 0 0;">내 일정 시간표에 자동으로 들어가 있어요.</p>`
+        : `<p class="muted" style="font-size:13px;margin:0;">공식 일정·연사는 아직 공개 전이에요. 공개되면 내 일정에 자동으로 추가돼요.</p>`}
+        ${k.korean_interpretation ? `<div class="notice" style="margin-bottom:0;">🇰🇷 ${esc(k.korean_interpretation_note || "키노트 한국어 실시간 통역 제공")}${k.livestream ? ` · ${esc(k.livestream)}` : ""}</div>` : ""}
+      </div>
+      <div class="card"><h3>추후 확인</h3>
+        <div class="muted" style="font-size:13px;">셔틀 세부 노선 · Expo 공식 시간 — 공식 발표 시 앱에 반영됩니다.</div>
+      </div>`;
+    })()}`;
   $$("#view-home [data-go]").forEach((el) => el.onclick = () => switchTab(el.dataset.go));
-  $$("#view-home [data-pitem]").forEach((el) => el.onclick = () => {
-    const day = vegasDateStr();
-    switchTab("planner");
-    Planner.openItem(el.dataset.pitem, day);
-  });
+  Planner.bindUpcoming();
+  const hn = $("#home-news");
+  if (hn) hn.onclick = () => News.open();
+  $$("#view-home [data-news-q]").forEach((b) => b.onclick = () => News.show(b.dataset.newsQ));
   Weather.refresh();
 };
 
@@ -527,12 +622,16 @@ const Settings = {
   editProfile() {
     const topics = (window.APP_DATA.topics && window.APP_DATA.topics.topics) || [];
     const picked = new Set(S().profile.topics);
+    const svcPicked = new Set(S().profile.services || []);
+    const svcs = serviceList().slice(0, 20);
     openModal(`
       <h2>프로필 수정</h2>
       <label class="field">닉네임</label>
       <input type="text" id="pf-nick" value="${esc(S().profile.nickname)}" maxlength="20">
       <label class="field">관심 토픽 (최대 10개)</label>
       <div class="chip-row" id="pf-topics">${topics.map((t) => `<button class="chip${picked.has(t) ? " on" : ""}" data-t="${esc(t)}">${esc(t)}</button>`).join("")}</div>
+      <label class="field" style="display:block;margin-top:10px;">관심 AWS 서비스 (최대 5개 · 추천에 반영)</label>
+      <div class="chip-row" id="pf-svcs">${svcs.map((x) => `<button class="chip${svcPicked.has(x.name) ? " on" : ""}" data-s="${esc(x.name)}">${esc(shortService(x.name))}</button>`).join("")}</div>
       <button class="btn block" id="pf-save">저장</button>
       <button class="btn ghost block" id="pf-cancel">취소</button>`);
     $$("#pf-topics .chip").forEach((c) => c.onclick = () => {
@@ -541,9 +640,16 @@ const Settings = {
       else if (picked.size < 10) { picked.add(t); c.classList.add("on"); }
       else toast("최대 10개까지 선택할 수 있어요");
     });
+    $$("#pf-svcs .chip").forEach((c) => c.onclick = () => {
+      const t = c.dataset.s;
+      if (svcPicked.has(t)) { svcPicked.delete(t); c.classList.remove("on"); }
+      else if (svcPicked.size < 5) { svcPicked.add(t); c.classList.add("on"); }
+      else toast("최대 5개까지 선택할 수 있어요");
+    });
     $("#pf-save").onclick = () => {
       S().profile.nickname = $("#pf-nick").value.trim();
       S().profile.topics = Array.from(picked);
+      S().profile.services = Array.from(svcPicked);
       Store.save(); closeModal(); Views.home(); toast("저장했어요");
     };
     $("#pf-cancel").onclick = closeModal;
@@ -642,4 +748,5 @@ document.addEventListener("DOMContentLoaded", () => {
   $$("#tabbar button").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
   if (!S().onboarded) startOnboarding();
   else { switchTab("home"); maybeShowInstallGuide(); }
+  Share.checkLink();
 });
