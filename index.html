@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>re:Invent 2026 출장 앱</title>
+<meta name="description" content="AWS re:Invent 2026 (11/30–12/4, 라스베가스) 올인원 출장 앱">
+<meta name="theme-color" content="#0f1f3d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="re:Invent 출장">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <header id="app-header">
+    <div class="header-title">re:Invent 2026 출장</div>
+    <div class="header-clock"><span id="clock-vegas"></span><span id="clock-kst"></span></div>
+  </header>
+
+  <main id="views">
+    <section id="view-home" class="view"></section>
+    <section id="view-sessions" class="view"></section>
+    <section id="view-planner" class="view"></section>
+    <section id="view-transport" class="view"></section>
+    <section id="view-prep" class="view"></section>
+    <section id="view-expenses" class="view"></section>
+  </main>
+
+  <nav id="tabbar">
+    <button data-tab="home" class="active"><span class="ico">🏠</span><span>홈</span></button>
+    <button data-tab="sessions"><span class="ico">🎙️</span><span>세션</span></button>
+    <button data-tab="planner"><span class="ico">🗓️</span><span>내 일정</span></button>
+    <button data-tab="transport"><span class="ico">🗺️</span><span>동선</span></button>
+    <button data-tab="prep"><span class="ico">🧳</span><span>사전준비</span></button>
+    <button data-tab="expenses"><span class="ico">🧾</span><span>정산</span></button>
+  </nav>
+</div>
+
+<div id="onboarding" class="overlay hidden"></div>
+<div id="install-guide" class="overlay hidden"></div>
+<div id="modal-root"></div>
+<div id="toast" class="hidden"></div>
+
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+<script src="js/sessions.js"></script>
+<script src="js/planner.js"></script>
+<script src="js/transport.js"></script>
+<script src="js/prep.js"></script>
+<script src="js/expenses.js"></script>
+<script src="js/transfer.js"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
