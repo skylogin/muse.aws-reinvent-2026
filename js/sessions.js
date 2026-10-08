@@ -4,6 +4,22 @@
 const SESSION_PAGE = 100; // 한 번에 그리는 카드 수 ('더 보기'로 늘림)
 const RES_LABEL = { reserved: "예약됨", waitlist: "대기", none: "미예약" };
 
+/* "Amazon Elastic Compute Cloud (Amazon EC2)" → "Amazon EC2" */
+function shortService(name) {
+  const m = String(name || "").match(/\(([^)]+)\)\s*$/);
+  return m ? m[1] : String(name || "");
+}
+/* 카탈로그에 나온 AWS 서비스 [{name, n}] (세션 수 많은 순) */
+let _serviceList = null;
+function serviceList() {
+  if (!_serviceList) {
+    const m = {};
+    allSessions().forEach((s) => (s.services || []).forEach((x) => { m[x] = (m[x] || 0) + 1; }));
+    _serviceList = Object.entries(m).sort((a, b) => b[1] - a[1]).map(([name, n]) => ({ name, n }));
+  }
+  return _serviceList;
+}
+
 /* "MGM Grand | Level 1 | Grand 122" → "Level 1 · Grand 122" (베뉴명 중복 제거) */
 function roomLabel(s) {
   if (!s || !s.room) return "";
@@ -13,7 +29,7 @@ function roomLabel(s) {
 }
 
 const Sessions = {
-  q: "", f: { date: "", venue: "", type: "", level: "", topic: "", format: "", delivery: "" },
+  q: "", f: { date: "", venue: "", type: "", level: "", topic: "", service: "", format: "", delivery: "" },
   venueGroup: false, // 베뉴별 모아보기
   limit: SESSION_PAGE,
 
@@ -28,10 +44,11 @@ const Sessions = {
       if (f.type && s.session_type !== f.type) return false;
       if (f.level && String(s.level) !== f.level) return false;
       if (f.topic && !(s.topics || []).includes(f.topic)) return false;
+      if (f.service && !(s.services || []).includes(f.service)) return false;
       if (f.format && s.session_format !== f.format) return false;
       if (f.delivery && s.delivery !== f.delivery) return false;
       if (q) {
-        const hay = `${s.title} ${(s.abstract || "")} ${(s.speakers || []).join(" ")} ${s.code}`.toLowerCase();
+        const hay = `${s.title} ${(s.abstract || "")} ${(s.speakers || []).join(" ")} ${s.code} ${(s.services || []).join(" ")}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -140,6 +157,7 @@ const Sessions = {
     const fav = S().favorites.includes(id);
     const res = (S().reservations[id] || {}).status || "none";
     const room = roomLabel(s);
+    const reps = Suggest.repeats(id);
     const fmtMap = { lecture: "이론", "hands-on": "실습", lab: "랩", discussion: "토론형" };
     const delMap = { "in-person": "현장만", livestream: "라이브스트림", recorded: "다시보기" };
     openModal(`
@@ -159,7 +177,10 @@ const Sessions = {
         ${s.speakers && s.speakers.length ? `<br>🎙️ ${esc(s.speakers.join(", "))}` : ""}
       </div>
       ${s.abstract ? `<p style="font-size:14px;">${esc(s.abstract)}</p>` : ""}
-      ${(s.topics || []).length ? `<div class="chip-row" id="d-topics">${s.topics.map((t) => `<button class="chip" data-topic="${esc(t)}" title="이 토픽으로 필터">#${esc(t)}</button>`).join("")}</div>` : ""}
+      ${(s.topics || []).length || (s.services || []).length ? `<div class="chip-row" id="d-topics">${(s.topics || []).map((t) => `<button class="chip" data-topic="${esc(t)}" title="이 토픽으로 필터">#${esc(t)}</button>`).join("")}${(s.services || []).map((t) => `<button class="chip svc" data-service="${esc(t)}" title="이 서비스로 필터">${esc(shortService(t))}</button>`).join("")}</div>` : ""}
+      ${reps.length ? `<h3 class="sg-head">🔁 다른 회차 ${reps.length}개</h3>
+      <p class="muted" style="font-size:12px;margin:0 0 2px;">같은 내용의 세션이 다른 날·장소에서도 열려요. 만석이면 다른 회차를 노려 보세요.</p>
+      <div id="d-reps">${reps.map((c) => Suggest.repeatRowHTML(c)).join("")}</div>` : ""}
       ${fav ? `<label class="field" style="display:block;margin-top:10px;">예약 상태</label>
       <div class="chip-row" id="d-res">${["reserved", "waitlist", "none"].map((v) => `<button class="chip${res === v ? " on" : ""}" data-v="${v}">${RES_LABEL[v]}</button>`).join("")}</div>` : ""}
       ${s.prerequisites ? `<div class="kv"><span>사전 준비물</span><b>${esc(s.prerequisites)}</b></div>` : ""}
@@ -175,13 +196,15 @@ const Sessions = {
       this.setReservation(id, c.dataset.v);
       this.renderResults();
     });
-    $$("#d-topics [data-topic]").forEach((c) => c.onclick = () => {
+    $$("#d-topics [data-topic], #d-topics [data-service]").forEach((c) => c.onclick = () => {
       closeModal();
-      Sessions.f.topic = c.dataset.topic;
+      const key = c.dataset.topic ? "topic" : "service", v = c.dataset.topic || c.dataset.service;
+      Sessions.f[key] = v;
       Sessions.limit = SESSION_PAGE;
       if (currentTab !== "sessions") switchTab("sessions"); else Views.sessions();
-      toast(`'${c.dataset.topic}' 토픽으로 필터했어요`);
+      toast(`'${key === "service" ? shortService(v) : v}'(으)로 필터했어요`);
     });
+    $$("#d-reps [data-sg-open]").forEach((el) => el.onclick = () => { closeModal(); this.openDetail(el.dataset.sgOpen); });
   },
 
 };
@@ -190,7 +213,7 @@ Views.sessions = function () {
   const el = $("#view-sessions");
   el.innerHTML = `
     <input type="search" id="ss-q" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false"
-      placeholder="세션 검색 (제목·코드·연사·소개)" value="${esc(Sessions.q)}">
+      placeholder="세션 검색 (제목·코드·연사·AWS 서비스${allSessions().some((x) => x.abstract) ? "·소개" : ""})" value="${esc(Sessions.q)}">
     <div id="ss-results"></div>`;
   bindSessionChrome();
   Sessions.renderResults();
@@ -219,7 +242,10 @@ Sessions.renderResults = function () {
     html = `
       <div class="ss-bar">
         <span class="muted">${list.length.toLocaleString("ko-KR")}개 세션${activeFilterCount ? ` · 필터 ${activeFilterCount}개` : ""}</span>
-        <button class="chip${Sessions.venueGroup ? " on" : ""}" id="ss-venue-group" aria-pressed="${Sessions.venueGroup}">📍 베뉴별</button>
+        <span class="ss-bar-r">
+          <button class="chip" id="ss-news">📣 발표 노트</button>
+          <button class="chip${Sessions.venueGroup ? " on" : ""}" id="ss-venue-group" aria-pressed="${Sessions.venueGroup}">📍 베뉴별</button>
+        </span>
       </div>
       ${cards}${more}
       <button id="ss-filter-fab" class="fab" aria-label="필터${activeFilterCount ? ` (${activeFilterCount}개 적용)` : ""}">${filterIcon}${activeFilterCount ? `<span class="fab-badge">${activeFilterCount}</span>` : ""}</button>`;
@@ -232,6 +258,8 @@ Sessions.renderResults = function () {
   if (fabBtn) fabBtn.onclick = () => Sessions.openFilterSheet();
   const moreBtn = $("#ss-more");
   if (moreBtn) moreBtn.onclick = () => { Sessions.limit += SESSION_PAGE; Sessions.renderResults(); };
+  const nw = $("#ss-news");
+  if (nw) nw.onclick = () => News.open();
   const vg = $("#ss-venue-group");
   if (vg) vg.onclick = () => { Sessions.venueGroup = !Sessions.venueGroup; Sessions.renderResults(); };
   const clr = $("#ss-clear-f");
@@ -244,7 +272,7 @@ Sessions.refreshAfterFav = function () {
 };
 
 Sessions.resetFilters = function () {
-  Sessions.f = { date: "", venue: "", type: "", level: "", topic: "", format: "", delivery: "" };
+  Sessions.f = { date: "", venue: "", type: "", level: "", topic: "", service: "", format: "", delivery: "" };
   Sessions.limit = SESSION_PAGE;
 };
 
@@ -254,7 +282,7 @@ Sessions.openFilterSheet = function () {
   const topics = (window.APP_DATA.topics.topics || []);
   const dates = [...new Set(Sessions.all().map((s) => s.date).filter(Boolean))].sort();
   const chipGroup = (key, opts, val, labelFn) => `
-    <label class="field">${{ date: "날짜", venue: "베뉴", type: "타입", level: "레벨", topic: "토픽" }[key]}</label>
+    <label class="field">${{ date: "날짜", venue: "베뉴", type: "타입", level: "레벨", topic: "토픽", service: "AWS 서비스 (세션 많은 순)" }[key]}</label>
     <div class="chip-row" data-fkey="${key}" style="margin-bottom:12px;">
       <button class="chip${!val ? " on" : ""}" data-v="">전체</button>
       ${opts.map((o) => {
@@ -271,6 +299,8 @@ Sessions.openFilterSheet = function () {
     ${chipGroup("type", types, Sessions.f.type)}
     ${chipGroup("level", ["100", "200", "300", "400"], Sessions.f.level)}
     ${chipGroup("topic", topics, Sessions.f.topic)}
+    ${chipGroup("service", serviceList().slice(0, 30).concat(Sessions.f.service && !serviceList().slice(0, 30).some((x) => x.name === Sessions.f.service) ? [{ name: Sessions.f.service, n: 0 }] : [])
+      .map((x) => ({ v: x.name, t: shortService(x.name) + (x.n ? ` ${x.n}` : "") })), Sessions.f.service)}
     <div class="sheet-actions">
       <button class="btn ghost" id="ff-reset">초기화</button>
       <button class="btn" id="ff-close">결과 보기</button>
@@ -314,3 +344,78 @@ function bindSessionChrome() {
   q.addEventListener("input", () => { clearTimeout(t); t = setTimeout(run, 250); });
   q.addEventListener("keydown", (e) => { if (e.key === "Enter") { run(); q.blur(); } });
 }
+
+/* 📣 신규 발표 노트: 키노트·발표 내용을 적어 두면 관련 세션을 찾아 줌
+   데이터: event_info.announcements = [{ date, title, q }] (q: 검색어, 쉼표로 여러 개) + 내가 적은 메모 */
+const News = {
+  items() {
+    const fromData = ((window.APP_DATA.event_info || {}).announcements || [])
+      .filter((x) => x && x.title).map((x, i) => ({ id: "an-" + i, title: x.title, q: x.q || (x.services || []).join(",") || x.title, date: x.date, official: true }));
+    return fromData.concat((S().news || []).map((x) => ({ ...x, official: false })));
+  },
+  terms(q) { return String(q || "").split(",").map((t) => t.trim().toLowerCase()).filter(Boolean); },
+  related(q) {
+    const terms = this.terms(q);
+    if (!terms.length) return [];
+    return allSessions().filter((s) => {
+      const hay = `${s.title} ${s.code} ${(s.services || []).join(" ")} ${s.abstract || ""}`.toLowerCase();
+      return terms.some((t) => hay.includes(t));
+    });
+  },
+  /* 관련 세션 보기: 세션 탭 검색으로 연결 (첫 검색어 기준) */
+  show(q) {
+    closeModal();
+    Sessions.q = String(q || "").split(",").map((t) => t.trim()).filter(Boolean)[0] || ""; // 입력한 대소문자 그대로
+    Sessions.resetFilters();
+    if (currentTab !== "sessions") switchTab("sessions"); else Views.sessions();
+  },
+  rowsHTML(list) {
+    return list.map((x) => {
+      const n = this.related(x.q).length;
+      return `<div class="sg-row">
+        <div class="sg-main"><b>${x.official ? "📣 " : "📝 "}${esc(x.title)}</b>
+          <span class="muted">검색어: ${esc(x.q)}${x.date ? ` · ${esc(dayLabel(x.date))}` : ""}</span></div>
+        <div class="sg-act">
+          ${x.official ? "" : `<button class="sg-btn" data-news-del="${esc(x.id)}" aria-label="삭제">✕</button>`}
+          <button class="sg-btn primary" data-news-q="${esc(x.q)}"${n ? "" : " disabled"}>세션 ${n}</button>
+        </div>
+      </div>`;
+    }).join("");
+  },
+  open() {
+    const render = () => this.items().length ? this.rowsHTML(this.items())
+      : `<p class="muted">아직 적은 발표가 없어요. 키노트에서 들은 새 서비스·기능을 적어 두면 관련 세션을 바로 찾아 줘요.</p>`;
+    openSheet({
+      title: "📣 신규 발표 노트",
+      body: `<div id="nw-list">${render()}</div>
+        <h3 class="sg-head">발표 메모 추가</h3>
+        <label class="field" for="nw-title">무엇이 발표됐나요?</label>
+        <input type="text" id="nw-title" maxlength="60" placeholder="예: Bedrock 에이전트 새 기능">
+        <label class="field" for="nw-q">관련 세션을 찾을 검색어 (쉼표로 여러 개)</label>
+        <input type="text" id="nw-q" maxlength="60" placeholder="예: Bedrock, agent">
+        <button class="btn ghost block" id="nw-add" style="margin-top:0;">＋ 추가</button>
+        <p class="muted" style="font-size:12px;">세션 제목·코드·AWS 서비스에서 검색어를 찾아요.</p>`,
+      actions: `<button class="btn" id="nw-close">닫기</button>`
+    });
+    const bind = () => {
+      $$("#nw-list [data-news-q]").forEach((b) => b.onclick = () => this.show(b.dataset.newsQ));
+      $$("#nw-list [data-news-del]").forEach((b) => b.onclick = () => {
+        S().news = (S().news || []).filter((x) => x.id !== b.dataset.newsDel); Store.save();
+        $("#nw-list").innerHTML = render(); bind();
+      });
+    };
+    bind();
+    $("#nw-add").onclick = () => {
+      const title = $("#nw-title").value.trim();
+      const q = $("#nw-q").value.trim() || title;
+      if (!title) { toast("발표 내용을 적어 주세요"); $("#nw-title").focus(); return; }
+      S().news = S().news || [];
+      S().news.unshift({ id: "nw" + Date.now().toString(36), title, q, date: vegasDateStr() });
+      Store.save();
+      $("#nw-title").value = ""; $("#nw-q").value = "";
+      $("#nw-list").innerHTML = render(); bind();
+      toast(`관련 세션 ${this.related(q).length}개를 찾았어요`);
+    };
+    $("#nw-close").onclick = () => $("#modal-overlay")._dismiss();
+  }
+};

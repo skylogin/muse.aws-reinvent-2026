@@ -156,7 +156,7 @@ const LS_KEY = "reinvent2026.v1";
 function defaultState() {
   return {
     onboarded: false,
-    profile: { nickname: "", topics: [] },
+    profile: { nickname: "", topics: [], services: [] },
     favorites: [],
     reservations: {},       // session_id -> {status, updated_at}
     backups: {},             // session_id -> [session_id]
@@ -181,7 +181,9 @@ function defaultState() {
     weather_cache: null,
     depart_done: {},   // 출발 전 할 일 완료 상태
     budget_usd: 0,     // 정산 예산 (USD)
-    peers: []          // 받은 동료 일정 [{id, name, days, visible, color, at}]
+    peers: [],         // 받은 동료 일정 [{id, name, days, visible, color, at}]
+    show_kr_hours: true, // 시간표에 한국 업무시간 표시
+    news: []           // 신규 발표 메모 [{id, title, q, at}]
   };
 }
 const Store = {
@@ -566,6 +568,8 @@ Views.home = function () {
   const cl = Packing.list();
   const clDone = cl.filter((x) => x.done).length;
   if (clDone < cl.length) todos.push({ text: `준비물 ${clDone}/${cl.length} 완료`, tab: "prep" });
+  const today = vegasDateStr();
+  if (today >= "2026-12-03" && today <= "2026-12-05") todos.push({ text: "✈️ 귀국 준비 확인 (체크아웃·공항·면세)", tab: "prep" });
 
   const pending = sessionsPending();
 
@@ -583,6 +587,13 @@ Views.home = function () {
     ${pending ? `<div class="notice">📡 세션 카탈로그 수집 대기 중 — 공식 카탈로그에서 수집하면 세션 탭이 활성화됩니다.</div>` : ""}
 
     <div id="home-upcoming">${Planner.upcomingHTML()}</div>
+    ${(() => {
+      const items = News.items();
+      if (!items.length && vegasDateStr() < EVENT_START) return "";
+      return `<div class="card"><h3>📣 신규 발표 노트</h3>
+        ${items.length ? News.rowsHTML(items.slice(0, 3)) : `<p class="muted" style="margin:0;">키노트에서 들은 새 서비스·기능을 적어 두면 관련 세션을 바로 찾아 줘요.</p>`}
+        <button class="btn ghost block small" id="home-news">${items.length > 3 ? `전체 ${items.length}개 · ` : ""}발표 노트 열기</button></div>`;
+    })()}
     <div class="card"><h3>할 일</h3>
       ${todos.length ? todos.map((t) => `<div class="todo-item" data-go="${t.tab}" role="button" tabindex="0">
         <span class="dot"></span><span class="txt">${esc(t.text)}</span><span class="chev">›</span></div>`).join("") : `<p class="muted">할 일이 없어요. 완벽해요 ✨</p>`}
@@ -601,6 +612,9 @@ Views.home = function () {
     })()}`;
   $$("#view-home [data-go]").forEach((el) => el.onclick = () => switchTab(el.dataset.go));
   Planner.bindUpcoming();
+  const hn = $("#home-news");
+  if (hn) hn.onclick = () => News.open();
+  $$("#view-home [data-news-q]").forEach((b) => b.onclick = () => News.show(b.dataset.newsQ));
   Weather.refresh();
 };
 
@@ -608,12 +622,16 @@ const Settings = {
   editProfile() {
     const topics = (window.APP_DATA.topics && window.APP_DATA.topics.topics) || [];
     const picked = new Set(S().profile.topics);
+    const svcPicked = new Set(S().profile.services || []);
+    const svcs = serviceList().slice(0, 20);
     openModal(`
       <h2>프로필 수정</h2>
       <label class="field">닉네임</label>
       <input type="text" id="pf-nick" value="${esc(S().profile.nickname)}" maxlength="20">
       <label class="field">관심 토픽 (최대 10개)</label>
       <div class="chip-row" id="pf-topics">${topics.map((t) => `<button class="chip${picked.has(t) ? " on" : ""}" data-t="${esc(t)}">${esc(t)}</button>`).join("")}</div>
+      <label class="field" style="display:block;margin-top:10px;">관심 AWS 서비스 (최대 5개 · 추천에 반영)</label>
+      <div class="chip-row" id="pf-svcs">${svcs.map((x) => `<button class="chip${svcPicked.has(x.name) ? " on" : ""}" data-s="${esc(x.name)}">${esc(shortService(x.name))}</button>`).join("")}</div>
       <button class="btn block" id="pf-save">저장</button>
       <button class="btn ghost block" id="pf-cancel">취소</button>`);
     $$("#pf-topics .chip").forEach((c) => c.onclick = () => {
@@ -622,9 +640,16 @@ const Settings = {
       else if (picked.size < 10) { picked.add(t); c.classList.add("on"); }
       else toast("최대 10개까지 선택할 수 있어요");
     });
+    $$("#pf-svcs .chip").forEach((c) => c.onclick = () => {
+      const t = c.dataset.s;
+      if (svcPicked.has(t)) { svcPicked.delete(t); c.classList.remove("on"); }
+      else if (svcPicked.size < 5) { svcPicked.add(t); c.classList.add("on"); }
+      else toast("최대 5개까지 선택할 수 있어요");
+    });
     $("#pf-save").onclick = () => {
       S().profile.nickname = $("#pf-nick").value.trim();
       S().profile.topics = Array.from(picked);
+      S().profile.services = Array.from(svcPicked);
       Store.save(); closeModal(); Views.home(); toast("저장했어요");
     };
     $("#pf-cancel").onclick = closeModal;

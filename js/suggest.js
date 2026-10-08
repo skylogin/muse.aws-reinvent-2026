@@ -14,18 +14,42 @@ const Suggest = {
   score(c, o) {
     let sc = 0;
     const topics = c.topics || [];
+    const svcs = c.services || [];
     if (o.base) {
       sc += 3 * topics.filter((t) => (o.base.topics || []).includes(t)).length;
+      sc += Math.min(2, svcs.filter((x) => (o.base.services || []).includes(x)).length);
       if (c.session_type === o.base.session_type) sc += 1.5;
       if (c.level && o.base.level) sc -= Math.abs(+c.level - +o.base.level) / 200;
       sc -= Math.abs(Planner.toMin(c.start_time) - Planner.toMin(o.base.start_time)) / 30;
     }
     sc += 2 * Math.min(2, topics.filter((t) => S().profile.topics.includes(t)).length);
+    sc += 1.5 * Math.min(2, svcs.filter((x) => (S().profile.services || []).includes(x)).length); // 관심 AWS 서비스
     if (/sponsored by/i.test(c.title || "")) sc -= 1.5; // 스폰서 발표는 살짝 뒤로
     const d = this.km(o.near, c.venue);
     if (d != null) sc += d === 0 ? 4 : -1.5 * d;
     if (S().favorites.includes(c.session_id)) sc += 1;
     return sc;
+  },
+
+  /* 같은 세션의 다른 회차 (코드 끝 -R, -R1… 만 다른 것) — 만석·대기일 때 다른 날 같은 내용을 들을 수 있음 */
+  baseCode(code) { return String(code || "").replace(/-R\d*$/, ""); },
+  repeats(id) {
+    const s = Planner.sessionById(id);
+    if (!s || !s.code) return [];
+    const b = this.baseCode(s.code);
+    return allSessions().filter((c) => c.session_id !== id && c.code && this.baseCode(c.code) === b)
+      .sort((x, y) => (x.date + x.start_time).localeCompare(y.date + y.start_time));
+  },
+  repeatRowHTML(c, o) {
+    o = o || {};
+    const planned = (S().daily_plan[c.date] || []).some((x) => x.session_id === c.session_id);
+    return `<div class="sg-row">
+      <div class="sg-main" data-sg-open="${esc(c.session_id)}" role="button" tabindex="0">
+        <b>${esc(dayLabel(c.date))} ${esc(c.start_time)}–${esc(c.end_time || "")}</b>
+        <span class="muted">📍 ${esc(c.venue || "")}${roomLabel(c) ? " · " + esc(roomLabel(c)) : ""} · ${esc(c.code)}</span>
+      </div>
+      <div class="sg-act">${planned ? `<span class="badge ok">담김</span>` : o.swapFrom ? `<button class="sg-btn primary" data-sg-do="${esc(c.session_id)}">이 회차로</button>` : ""}</div>
+    </div>`;
   },
 
   /* 대체 세션: 같은 날, 시작 시각이 ±30분 이내 (o.near가 있으면 그 베뉴에서 가까운 순으로 가산) */
@@ -146,7 +170,13 @@ const Suggest = {
           <span>🕘</span><span><b>${Planner.hhmm(from)}–${Planner.hhmm(to)}</b> <span class="muted">· ${Planner.dur(len)} 비어 있어요</span></span>
           ${near ? `<span>📍</span><span>${esc(near)}에서 출발</span>` : ""}
         </div>
-        ${lunch ? `<div class="notice">🍽️ ${esc(meals || "컨퍼런스 기간에는 베뉴마다 식사 공간이 운영돼요.")} 지금 있는 베뉴의 식사 공간을 이용하면 이동 없이 해결돼요.</div>` : ""}
+        ${lunch ? `<div class="notice">🍽️ ${esc(meals || "컨퍼런스 기간에는 베뉴마다 식사 공간이 운영돼요.")} 지금 있는 베뉴의 식사 공간을 이용하면 이동 없이 해결돼요.
+          ${near ? `<br><a href="${LocalGuide.mapsQuery("restaurants near " + (VENUE_ALIASES[near] || near) + " Las Vegas")}" target="_blank" rel="noopener">📍 ${esc(near)} 근처 식당 지도</a>` : ""}</div>` : ""}
+        ${(() => {
+          const kr = Planner.krBands(date).filter((b) => b.s < to && b.e > from);
+          // hhmm은 24시간을 넘기면 다음 날 시각으로 접어 줌 (PST + 17시간 = KST)
+          return kr.length ? `<div class="notice">🇰🇷 이 시간은 한국 업무시간이에요 (한국 ${Planner.hhmm(Math.max(from, kr[0].s) + 17 * 60)}부터). 본사 연락·메일 처리하기 좋아요.</div>` : "";
+        })()}
         <h3 style="margin:14px 0 6px;">이 시간에 볼 만한 세션</h3>
         ${list.length ? list.map((c) => this.rowHTML(c, { near })).join("") : `<p class="muted">이 시간 안에 끝나는 세션이 없어요. Expo나 라운지에서 쉬어 가세요.</p>`}
         <p class="muted" style="font-size:12px;">관심 토픽·가까운 베뉴 순으로 골랐어요. 이동 시간을 빼고도 시작 전에 도착할 수 있는 세션만 보여줘요.</p>`,

@@ -562,6 +562,13 @@ table.plain th { color: var(--muted); font-weight: 600; font-size: 12px; }
 /* 세션 목록 상단 줄 */
 .ss-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 2px 0 8px; }
 .ss-bar .chip { padding: 6px 12px; }
+.ss-bar-r { display: flex; gap: 6px; flex: 0 0 auto; }
+.chip.svc { border-style: dashed; }
+.tt-kr { position: absolute; left: 0; right: 0; z-index: 0; pointer-events: none;
+  background: rgba(29,79,163,.07);
+  border-top: 1px dashed rgba(29,79,163,.35); }
+[data-theme="dark"] .tt-kr { background: rgba(156,192,255,.11); border-top-color: rgba(156,192,255,.45); }
+.tt-kr span { position: absolute; right: 6px; bottom: 3px; font-size: 10.5px; font-weight: 700; color: var(--link); opacity: .85; }
 
 /* ---------- report (full screen) ---------- */
 .report-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }

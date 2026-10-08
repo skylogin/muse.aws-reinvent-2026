@@ -52,6 +52,13 @@ const LocalGuide = {
       <h4>예약석 규칙</h4>
       <ul>${li(rs.rules)}</ul>
       ${rs.eligible_types ? `<p class="muted">예약 대상: ${esc(rs.eligible_types.join(", "))}${rs.no_reservation_needed ? `<br>예약 없이 입장: ${esc(rs.no_reservation_needed.join(", "))}` : ""}</p>` : ""}
+      <h4>예약 없이 들어가기 (Walk-up)</h4>
+      <ul>
+        <li>인기 세션은 시작 20–30분 전 입구의 Walk-up 줄에 서세요</li>
+        <li>예약자가 시작 10분 전까지 오지 않으면 그 자리가 줄 순서대로 열려요</li>
+        <li>만석이면 같은 세션의 다른 회차(코드 끝 -R1, -R2…)를 찾아보세요 — 세션 상세에 '다른 회차'로 나와요</li>
+        <li>키노트와 강의식 브레이크아웃은 예약 없이 들어갈 수 있어요</li>
+      </ul>
       <h4>식사</h4>
       <p>${esc(ml.note || "컨퍼런스 기간 베뉴별 식사 제공")}</p>
       <p class="muted">내 일정 → 동선에서 점심 시간대 빈 시간을 알려 줘요.</p>
@@ -77,6 +84,53 @@ const LocalGuide = {
         <li>알레르기·비염: Claritin, Zyrtec</li>
       </ul>
       <p class="muted">복용 중인 처방약은 현지에서 살 수 없으니 한국에서 넉넉히 챙겨 가세요. 약은 포장 성분을 꼭 확인하세요.</p>`;
+  },
+  mapsQuery(q) { return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(q); },
+  returnHTML() {
+    return `<h4>호텔 체크아웃</h4>
+      <ul>
+        <li>체크아웃은 보통 오전 11시 — 짐은 벨 데스크(Bell Desk)에 맡기고 마지막 날 세션에 가세요 (짐표는 사진으로)</li>
+        <li>청구서의 리조트피·미니바·추가 요금 확인 → 영수증은 정산 탭에 사진으로 남기기</li>
+        <li>금요일(12/4) 세션은 낮 12:30 무렵 끝나요 — 항공편 시간과 맞춰 보세요</li>
+      </ul>
+      <h4>공항 (Harry Reid, LAS)</h4>
+      <ul>
+        <li>국제선은 출발 <b>3시간 전</b> 도착 권장 — 스트립에서 차로 15–20분이지만 체크아웃 시간대엔 더 걸려요</li>
+        <li>한국행 직항은 보통 Terminal 3 — 항공권의 터미널을 확인하세요</li>
+        <li>보조배터리는 위탁 수하물에 넣을 수 없고 기내 반입만 돼요. 국내 항공사는 기내 사용 금지·단자 절연(테이프·비닐) 규정이 있으니 항공사 안내를 확인하세요</li>
+        <li>노트북·태블릿은 기내 반입 — 보안 검색에서 꺼내 달라고 할 수 있어요</li>
+      </ul>
+      <h4>한국 입국·면세</h4>
+      <ul>
+        <li>여행자 휴대품 면세 한도는 1인 <b>미화 800달러</b> (술·담배·향수는 별도)</li>
+        <li>별도 면세: 술 2병(합계 2L·미화 400달러 이하), 담배 200개비, 향수 100ml</li>
+        <li>한도를 넘으면 자진신고하세요 — 신고하면 세금이 감면되고, 안 하면 가산세가 붙어요</li>
+        <li>미국은 여행자 부가세 환급(Tax Refund)이 없어요</li>
+      </ul>
+      <p class="muted">면세 기준은 바뀔 수 있어요 — 출발 전 관세청 '여행자 휴대품 통관' 안내에서 최신 기준을 확인하세요.</p>`;
+  },
+  mealsHTML() {
+    const ml = (window.APP_DATA.event_info || {}).meals || {};
+    const venues = (window.APP_DATA.event_info.venues || []);
+    return `<h4>행사장 식사</h4>
+      <p>${esc(ml.note || "컨퍼런스 기간 베뉴별 식사 제공")}</p>
+      <p class="muted">내 일정 → 동선에서 점심 시간대 빈 시간과 근처 식당을 알려 줘요.</p>
+      <h4>베뉴 주변 식당 (지도에서 바로)</h4>
+      <div class="route-info" style="margin:6px 0 0;padding:0;border:0;">
+        ${venues.map((v) => `<a class="btn ghost small" target="_blank" rel="noopener" href="${this.mapsQuery("restaurants near " + v.name + " Las Vegas")}">🍽️ ${esc(shortVenue(v.name))}</a>`).join("")}
+      </div>
+      <h4>한식이 그리울 때</h4>
+      <ul>
+        <li>스트립 서쪽 <b>차이나타운(Spring Mountain Rd)</b>에 한식당·아시안 마트가 모여 있어요 — 스트립에서 택시·Uber 10–15분.
+          <a href="${this.mapsQuery("Korean restaurant Spring Mountain Rd Las Vegas")}" target="_blank" rel="noopener">지도에서 보기</a></li>
+      </ul>
+      <h4>빨리 먹기·늦은 시간</h4>
+      <ul>
+        <li>호텔 쇼핑몰(Grand Canal Shoppes, Forum Shops 등)의 푸드코트·카페</li>
+        <li>Caesars Forum 근처 The LINQ Promenade에 캐주얼 식당이 많아요</li>
+        <li>카지노 호텔마다 24시간 카페·델리가 있어 이른 아침·늦은 밤에 유용해요</li>
+      </ul>
+      <p class="muted">영업시간·운영 여부는 지도에서 확인하세요. 팁은 '💵 팁 계산기'로 계산할 수 있어요.</p>`;
   },
   /* 팁 계산기 (영수증 금액 → 18/20/22%) */
   openTips() {
@@ -179,6 +233,8 @@ Views.prep = function () {
         <button class="btn ghost small" data-lg="event">🎫 배지·예약석·식사</button>
         <button class="btn ghost small" data-lg="tips">💵 팁 계산기</button>
         <button class="btn ghost small" data-lg="stores">🛒 편의점·약국</button>
+        <button class="btn ghost small" data-lg="meals">🍽️ 식사·맛집</button>
+        <button class="btn ghost small" data-lg="return">✈️ 귀국 준비</button>
       </div>
     </div>
 
@@ -207,6 +263,8 @@ Views.prep = function () {
     if (k === "tips") LocalGuide.openTips();
     else if (k === "emergency") openDrawer("🆘 응급·안전", LocalGuide.emergencyHTML());
     else if (k === "event") openDrawer("🎫 배지·예약석·식사", LocalGuide.eventHTML());
+    else if (k === "meals") openDrawer("🍽️ 식사·맛집", LocalGuide.mealsHTML());
+    else if (k === "return") openDrawer("✈️ 귀국 준비", LocalGuide.returnHTML());
     else openDrawer("🛒 편의점·약국", LocalGuide.storesHTML());
   });
 };

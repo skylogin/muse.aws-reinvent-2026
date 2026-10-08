@@ -298,6 +298,15 @@ const Planner = {
       }
     });
 
+    // 한국 업무시간(평일 09–18시 KST) 띠
+    if (S().show_kr_hours !== false) {
+      this.krBands(date).forEach((b) => {
+        const s0 = Math.max(b.s, START), e0 = Math.min(b.e, END);
+        if (e0 - s0 < 15) return;
+        html += `<div class="tt-kr" style="top:${y(s0)}px;height:${Math.round((e0 - s0) * PX)}px"><span>🇰🇷 한국 업무시간 ${b.kstLabel} ${this.hhmm(s0 + 17 * 60)}–${this.hhmm(e0 + 17 * 60)}</span></div>`;
+      });
+    }
+
     // 지금 선
     if (date === vegasDateStr()) {
       const p = vegasParts();
@@ -308,7 +317,19 @@ const Planner = {
     }
 
     return `<div class="tt-wrap"><div class="tt-grid" style="height:${y(END) + PAD}px">${html}</div>
-      <div class="tt-note muted">일정을 탭하면 상세 · 이동 표시를 탭하면 길찾기 · 🇰🇷 한국 시간</div></div>`;
+      <div class="tt-note muted">일정을 탭하면 상세 · 이동 표시를 탭하면 길찾기 · 🇰🇷 한국 시간${S().show_kr_hours !== false ? "<br>푸른 띠는 한국 업무시간 (설정에서 끌 수 있어요)" : ""}</div></div>`;
+  },
+
+  /* 라스베가스 하루(PST) 중 한국 평일 업무시간(09–18시 KST)에 해당하는 구간 — PST + 17시간 = KST
+     · 00:00–01:00 → 같은 날짜 KST 17–18시 · 16:00–24:00 → 다음 날짜 KST 09–17시 */
+  krBands(date) {
+    const next = new Date(date + "T12:00:00"); next.setDate(next.getDate() + 1);
+    const nextStr = `${next.getFullYear()}-${pad2(next.getMonth() + 1)}-${pad2(next.getDate())}`;
+    const weekday = (ds) => { const w = new Date(ds + "T12:00:00").getDay(); return w > 0 && w < 6; };
+    const out = [];
+    if (weekday(date)) out.push({ s: 0, e: 60, kstLabel: dayLabel(date) });
+    if (weekday(nextStr)) out.push({ s: 16 * 60, e: 24 * 60, kstLabel: dayLabel(nextStr) });
+    return out;
   },
 
   /* ---- 이 날의 동선 (정류장 목록) ---- */
@@ -482,6 +503,12 @@ const Planner = {
     const pinned = (S().backups[id] || []).map((x) => this.sessionById(x)).filter((x) => x && !planned.has(x.session_id));
     const recs = Suggest.alternatives(id, { limit: 6 }).filter((x) => !pinned.includes(x));
     const alts = pinned.concat(recs).slice(0, 5);
+    const reps = Suggest.repeats(id).filter((c) => c.date !== it.date || c.start_time !== it.start_time);
+    const walkUp = res !== "reserved" ? `<div class="notice" style="margin-top:14px;">🚶 <b>예약 없이 들어가려면</b> 시작 20–30분 전 입구의 Walk-up 줄에 서세요. 예약자가 시작 10분 전까지 오지 않은 자리가 줄 순서대로 열려요.</div>` : "";
+    const repHTML = reps.length ? `
+        <h3 class="sg-head">📅 다른 회차 ${reps.length}개</h3>
+        <p class="muted" style="font-size:12px;margin:0 0 4px;">같은 내용이 다른 날·장소에서도 열려요. '이 회차로'를 누르면 일정이 바뀌어요.</p>
+        ${reps.map((c) => Suggest.repeatRowHTML(c, { swapFrom: id })).join("")}` : "";
     const altHTML = alts.length ? `
         <h3 class="sg-head">🔁 ${res === "reserved" ? "대체 세션" : "예약이 어렵다면? 대체 세션"}</h3>
         <p class="muted" style="font-size:12px;margin:0 0 4px;">같은 시간대(±30분)의 비슷한 세션이에요. ☆로 백업 표시, '바꾸기'로 일정 교체.</p>
@@ -505,7 +532,7 @@ const Planner = {
         <div class="stars" id="pi-stars">${[1, 2, 3, 4, 5].map((i) => `<span data-s="${i}" class="${i <= n.rating ? "on" : ""}">★</span>`).join("")}</div>
         <label class="field" for="pi-memo">메모</label>
         <textarea id="pi-memo" rows="3" placeholder="배운 점, 후속 액션 등">${esc(n.memo)}</textarea>
-        ${altHTML}
+        ${walkUp}${repHTML}${altHTML}
         <div class="sheet-links">
           <button class="link-btn" id="pi-detail">세션 소개 보기</button>
           ${venueCo ? `<a class="link-btn" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${venueCo.lat},${venueCo.lng}">지도에서 보기</a>` : ""}
