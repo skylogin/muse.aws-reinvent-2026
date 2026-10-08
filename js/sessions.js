@@ -19,7 +19,7 @@ const Sessions = {
       if (f.format && s.session_format !== f.format) return false;
       if (f.delivery && s.delivery !== f.delivery) return false;
       if (q) {
-        const hay = `${s.title} ${s.abstract} ${(s.speakers || []).join(" ")} ${s.code}`.toLowerCase();
+        const hay = `${s.title} ${(s.abstract || "")} ${(s.speakers || []).join(" ")} ${s.code}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -87,6 +87,7 @@ const Sessions = {
       <div class="chip-row" id="d-res">
         ${["reserved", "waitlist", "none"].map((v) => `<button class="chip${res === v ? " on" : ""}" data-v="${v}">${v === "reserved" ? "예약됨" : v === "waitlist" ? "대기" : "미예약"}</button>`).join("")}
       </div>
+      ${((s.catalog_url || APP_DATA.catalog_url)) ? `<a class="btn ghost block" href="${esc(s.catalog_url || APP_DATA.catalog_url)}" target="_blank" rel="noopener">공식 카탈로그에서 상세 보기</a>` : ""}
       <a class="btn accent block" href="https://registration.awsevents.com/" target="_blank" rel="noopener">AWS Events 앱에서 예약하기</a>
       <button class="btn ghost block" id="d-close">닫기</button>`);
     $("#d-fav").onclick = (e) => { e.stopPropagation(); closeModal(); this.toggleFav(id); };
@@ -113,7 +114,7 @@ const Sessions = {
     if (!q) return [];
     const hits = [];
     this.all().forEach((s) => {
-      const hay = `${s.title} ${s.abstract}`.toLowerCase();
+      const hay = `${s.title} ${(s.abstract || "")}`.toLowerCase();
       if (hay.includes(q)) hits.push({ kind: "세션", title: s.title, sub: `${s.code || ""} · ${s.date || ""}`, id: s.session_id });
     });
     (window.APP_DATA.prep_sections || []).forEach((sec) => {
@@ -148,13 +149,13 @@ Views.sessions = function () {
       <button class="chip${Sessions.mode === "session" ? " on" : ""}" data-m="session">세션</button>
       <button class="chip${Sessions.mode === "term" ? " on" : ""}" data-m="term">용어</button>
     </div>`;
-  const searchBox = `<input type="text" id="ss-q" placeholder="${Sessions.mode === "term" ? "용어 검색 (예: 셔틀, ESTA, re:Play)" : "세션 검색 (제목·초록·연사)"}" value="${esc(Sessions.q)}">`;
+  const searchBox = `<input type="text" id="ss-q" placeholder="${Sessions.mode === "term" ? "용어 검색 (예: 셔틀, ESTA, re:Play)" : "세션 검색 (제목·코드·연사)"}" value="${esc(Sessions.q)}">`;
 
   if (Sessions.pending()) {
     const body = Sessions.mode === "term" ? Sessions.termBodyHTML() : `
       <div class="empty-state"><div class="big">📡</div>
         <h3>세션 카탈로그 수집 대기 중</h3>
-        <p>올해 카탈로그는 로그인이 필요해서<br>아직 세션 목록을 가져오지 못했어요.<br>로그인 후 수집이 완료되면<br>여기에 1,200개+ 세션이 표시됩니다.</p>
+        <p>세션 목록을 가져오지 못했어요.<br>공식 카탈로그에서 다시 수집하면<br>여기에 2,000개+ 세션이 표시됩니다.</p>
       </div>
       <div class="card"><h3>최근 검색</h3>${Sessions.historyHTML()}</div>`;
     el.innerHTML = `${modeBtns}${searchBox}${body}`;
