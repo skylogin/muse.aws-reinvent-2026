@@ -60,6 +60,18 @@ function dayLabel(ds) { // "2026-11-30" -> "11.30(월)"
   const [, m, d] = ds.split("-");
   return `${Number(m)}.${Number(d)}(${wd})`;
 }
+/* Vegas 현지 시간을 한국 시간으로 (PST=UTC-8, KST=UTC+9 → +17시간. 11/30–12/4는 서머타임 종료 후) */
+function kstOf(dateStr, timeStr) {
+  if (!timeStr || !/^\d{1,2}:\d{2}$/.test(timeStr)) return "";
+  const [h, m] = timeStr.split(":").map(Number);
+  const t = (h * 60 + m + 17 * 60) % (24 * 60);
+  return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+}
+function kstRange(dateStr, s, e) {
+  if (!s) return "";
+  const a = kstOf(dateStr, s), b = e ? kstOf(dateStr, e) : "";
+  return a + (b ? "–" + b : "");
+}
 function dday() {
   const today = vegasDateStr();
   const ms = (new Date(EVENT_START + "T00:00:00") - new Date(today + "T00:00:00")) / 86400000;
@@ -98,7 +110,9 @@ function defaultState() {
     fx_rate: 1450,
     theme: (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light",
     notify: { on: false, minutes: 15 },  // 관심 세션 시작 알림 (앱이 켜져 있을 때만 동작)
-    weather_cache: null
+    weather_cache: null,
+    depart_done: {},   // 출발 전 할 일 완료 상태
+    budget_usd: 0      // 정산 예산 (USD)
   };
 }
 const Store = {
@@ -485,9 +499,30 @@ const Settings = {
 
 };
 
+/* ---------- depart tasks (D-day based) ---------- */
+const DepartTasks = {
+  all() {
+    return [
+      { id: "dt-esta", d: 14, text: "ESTA 승인 상태 확인" },
+      { id: "dt-insurance", d: 14, text: "여행자 보험 · 회사 출장 규정 확인" },
+      { id: "dt-fx", d: 7, text: "환전 (달러)" },
+      { id: "dt-app", d: 7, text: "AWS Events 앱 설치·로그인" },
+      { id: "dt-esim", d: 3, text: "eSIM 구매·설치" },
+      { id: "dt-pack", d: 3, text: "짐싸기 시작" },
+      { id: "dt-sess", d: 3, text: "세션 예약 최종 확인" },
+      { id: "dt-passport", d: 1, text: "여권·보조배터리·충전기 챙기기" },
+      { id: "dt-checkin", d: 1, text: "항공편 온라인 체크인" }
+    ];
+  },
+  toggle(id) {
+    const done = S().depart_done || (S().depart_done = {});
+    if (done[id]) delete done[id]; else done[id] = true;
+    Store.save(); Views.prep();
+  }
+};
+
 /* packing checklist defaults */
-const Packing = {
-  defaults() {
+const Packing = {  defaults() {
     return [
       "여권 (유효기간 확인)", "ESTA 승인 확인", "편한 운동화",
       "레이어드 복장 (얇은 긴팔 + 겨울 외투)", "보조배터리",

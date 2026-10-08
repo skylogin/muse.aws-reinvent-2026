@@ -75,6 +75,7 @@ const Sessions = {
       </div>
       <div class="muted" style="font-size:13px;margin-bottom:8px;">
         ${s.date ? esc(dayLabel(s.date)) + " " : ""}${esc(s.start_time || "")}${s.end_time ? "–" + esc(s.end_time) : ""} (현지)
+        ${kstRange(s.date, s.start_time, s.end_time) ? `<br>🇰🇷 한국 ${kstRange(s.date, s.start_time, s.end_time)}` : ""}
         ${s.venue ? `<br>📍 ${esc(s.venue)}${s.room ? " · " + esc(s.room) : ""}` : ""}
         ${s.speakers && s.speakers.length ? `<br>🎙️ ${esc(s.speakers.join(", "))}` : ""}
       </div>

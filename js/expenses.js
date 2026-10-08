@@ -11,8 +11,23 @@ Views.expenses = function () {
     .reduce((a, e) => ({ usd: a.usd + (+e.amount_usd || 0), krw: a.krw + (+e.amount_krw || 0) }), { usd: 0, krw: 0 });
   const sc = sum("company"), sp = sum("personal");
   const fmt = (n) => Number(n || 0).toLocaleString("ko-KR");
+  const budget = +S().budget_usd || 0;
+  const totalUsd = sc.usd + sp.usd;
+  const pct = budget > 0 ? Math.min(Math.round(totalUsd / budget * 100), 100) : 0;
+  const budgetMsg = budget > 0
+    ? (totalUsd >= budget
+        ? `<div class="danger-box">⚠️ 예산을 초과했어요! ($${fmt(totalUsd)} / $${fmt(budget)})</div>`
+        : totalUsd >= budget * 0.8
+          ? `<div class="warn-box">예산의 ${Math.round(totalUsd / budget * 100)}%를 사용했어요 ($${fmt(totalUsd)} / $${fmt(budget)})</div>`
+          : `<div class="muted" style="font-size:13px;">$${fmt(totalUsd)} / $${fmt(budget)} (${Math.round(totalUsd / budget * 100)}% 사용)</div>`)
+    : `<div class="muted" style="font-size:13px;">예산을 설정하면 지출을 관리할 수 있어요.</div>`;
 
   el.innerHTML = `
+    <div class="card"><h3>💰 예산</h3>
+      <div class="progress"><div style="width:${pct}%"></div></div>
+      ${budgetMsg}
+      <button class="btn ghost small" id="ex-budget" style="margin-top:6px;">예산 설정</button>
+    </div>
     <div class="card">
       <div class="chip-row">
         ${[["all", "전체"], ["company", "회사"], ["personal", "개인"]].map(([v, l]) =>
@@ -36,10 +51,32 @@ Views.expenses = function () {
 
   $$("#view-expenses [data-ef]").forEach((b) => b.onclick = () => { expFilter = b.dataset.ef; Views.expenses(); });
   $("#ex-add").onclick = Expenses.openForm;
+  $("#ex-budget").onclick = () => {
+    openModal(`
+      <h2>예산 설정</h2>
+      <label class="field">출장 전체 예산 (USD)</label>
+      <input type="number" id="bg-usd" value="${S().budget_usd || ""}" placeholder="예: 2000" inputmode="decimal">
+      <button class="btn block" id="bg-save">저장</button>
+      <button class="btn ghost block" id="bg-cancel">취소</button>`);
+    $("#bg-save").onclick = () => {
+      S().budget_usd = +$("#bg-usd").value || 0;
+      Store.save(); closeModal(); Views.expenses(); toast("예산을 저장했어요");
+    };
+    $("#bg-cancel").onclick = closeModal;
+  };
   $$("#view-expenses [data-exdel]").forEach((b) => b.onclick = () => {
-    if (!confirm("삭제할까요?")) return;
-    S().expenses = S().expenses.filter((e) => e.id !== b.dataset.exdel);
-    Store.save(); Views.expenses();
+    const id = b.dataset.exdel;
+    const target = S().expenses.find((e) => e.id === id);
+    openModal(`
+      <h2>삭제할까요?</h2>
+      <p>"${esc((target && (target.desc || EXP_CATS[target.category])) || "지출")}" 기록을 삭제합니다.</p>
+      <button class="btn danger block" id="ex-del-yes">삭제</button>
+      <button class="btn ghost block" id="ex-cancel">취소</button>`);
+    $("#ex-del-yes").onclick = () => {
+      S().expenses = S().expenses.filter((e) => e.id !== id);
+      Store.save(); closeModal(); Views.expenses(); toast("삭제했어요");
+    };
+    $("#ex-cancel").onclick = closeModal;
   });
 };
 

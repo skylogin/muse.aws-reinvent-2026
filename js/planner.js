@@ -79,30 +79,84 @@ const Planner = {
   },
   toMin(t) { if (!t) return null; const [h, m] = t.split(":").map(Number); return h * 60 + m; },
 
-  renderTimeline(date) {
+  /* ---- timetable (8:00–20:00, 1px = 1min) ---- */
+  renderTimetable(date) {
     const items = this.itemsFor(date);
+    const START = 8 * 60, END = 20 * 60, GUTTER = 46;
     if (!items.length) return `<div class="empty-state"><div class="big">🗓️</div><p>이 날의 일정이 비어 있어요.<br>세션 탭에서 관심 세션을 담아보세요.</p></div>`;
-    let html = "";
-    items.forEach((it, i) => {
-      html += this.itemHTML(it);
-      const nxt = items[i + 1];
-      if (nxt) {
-        const tr = this.travelBetween(it, nxt);
-        if (tr) {
-          const endMin = this.toMin(it.end || it.end_time);
-          const startMin = this.toMin(nxt.start || nxt.start_time);
-          const gap = (endMin != null && startMin != null) ? startMin - endMin : null;
-          const impossible = gap != null && gap < tr.minutes;
-          html += `<div class="travel-block${impossible ? " impossible" : ""}">
-            🚶 ${esc(tr.label)}
-            ${tr.maps ? `<br><a href="${tr.maps}" target="_blank" rel="noopener" style="font-size:12px;">Google Maps에서 길찾기</a>` : ""}
-            ${impossible ? `<div class="danger-box" style="margin:6px 0 0;">⚠️ 이동에 ${tr.minutes}분이 필요하지만 간격이 ${gap}분입니다.
-              <br>· 앞 세션을 일찍 나오기<br>· 뒤 세션을 백업으로 교체<br>· 같은 베뉴의 다른 세션 찾아보기</div>` : ""}
-          </div>`;
-        }
-      }
+
+    const blocks = [];
+    items.forEach((it) => {
+      const s = this.toMin(it.start || it.start_time);
+      let e = this.toMin(it.end || it.end_time);
+      if (s == null) return;
+      if (e == null || e <= s) e = s + 60;
+      if (e <= START || s >= END) return;
+      blocks.push({ it, s: Math.max(s, START), e: Math.min(e, END) });
     });
-    return html;
+
+    // 겹치는 블록은 가로로 나눔
+    const sorted = [...blocks].sort((a, b) => a.s - b.s || a.e - b.e);
+    const colEnd = [];
+    sorted.forEach((b) => {
+      let c = 0;
+      while (c < colEnd.length && colEnd[c] > b.s) c++;
+      b.col = c; colEnd[c] = b.e;
+    });
+    blocks.forEach((b) => {
+      let mx = b.col + 1;
+      blocks.forEach((o) => { if (o !== b && o.s < b.e && b.s < o.e) mx = Math.max(mx, o.col + 1); });
+      b.cols = mx;
+    });
+
+    let grid = "";
+    for (let h = 8; h <= 20; h++) {
+      grid += `<div class="tt-hour" style="top:${h * 60 - START}px"><span>${h}:00</span></div>`;
+    }
+
+    let html = grid;
+    blocks.forEach((b) => {
+      const top = b.s - START;
+      const hgt = Math.max(b.e - b.s, 46);
+      const left = `calc(${GUTTER}px + (100% - ${GUTTER}px) * ${b.col / b.cols})`;
+      const width = `calc((100% - ${GUTTER}px) / ${b.cols} - 6px)`;
+      const kind = b.it.kind === "fixed" ? "fixed" : "session";
+      const time = `${b.it.start || b.it.start_time || ""}${(b.it.end || b.it.end_time) ? "–" + (b.it.end || b.it.end_time) : ""}`;
+      const kst = kstRange(date, b.it.start || b.it.start_time, b.it.end || b.it.end_time);
+      const note = b.it.note || (S().session_notes[b.it.session_id || b.it.id] || {}).memo;
+      html += `<div class="tt-block tt-${kind}" data-pitem="${esc(b.it.session_id || b.it.id)}"
+        style="top:${top}px;height:${hgt}px;left:${left};width:${width};" role="button" tabindex="0">
+        <div class="tt-time">${esc(time)}${kst ? ` <span class="tt-kst">🇰🇷${kst}</span>` : ""}</div>
+        <div class="tt-title">${b.it.kind === "fixed" ? `<span class="badge warn">고정</span> ` : ""}<strong>${esc(b.it.title)}</strong></div>
+        ${b.it.venue ? `<div class="tt-venue">📍 ${esc(b.it.venue)}</div>` : ""}
+        ${note ? `<div class="tt-venue">📝 ${esc(note)}</div>` : ""}
+      </div>`;
+    });
+
+    // 이동 레이어: 일정 사이 간격에만 표시 (겹치면 생략)
+    const ordered = [...blocks].sort((a, b) => a.s - b.s);
+    ordered.forEach((b, i) => {
+      const nxt = ordered[i + 1];
+      if (!nxt) return;
+      const gap = nxt.s - b.e;
+      if (gap <= 0) return;
+      const tr = this.travelBetween(b.it, nxt.it);
+      if (!tr) return;
+      const bad = gap < tr.minutes;
+      html += `<div class="tt-travel${bad ? " bad" : ""}" style="top:${b.e - START - 11}px;left:${GUTTER + 6}px" title="${esc(tr.label)}">🚶 ${tr.minutes}분 · ${esc(tr.mode)}${bad ? " ⚠️" : ""}</div>`;
+    });
+
+    // 지금 선
+    if (date === vegasDateStr()) {
+      const p = vegasParts();
+      const nowMin = (+p.hour) * 60 + (+p.minute);
+      if (nowMin >= START && nowMin <= END) {
+        html += `<div class="tt-now" style="top:${nowMin - START}px"><span>지금</span></div>`;
+      }
+    }
+
+    return `<div class="tt-wrap"><div class="tt-grid" style="height:${END - START}px">${html}</div>
+      <div class="tt-note muted">탭하면 상세 보기 · 🇰🇷는 한국 시간</div></div>`;
   },
 
   openNote(id) {
@@ -134,8 +188,7 @@ const Planner = {
     Store.save(); Views.planner();
   },
 
-  exportICS() {
-    const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//reinvent2026//trip//KO"];
+  exportICS() {    const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//reinvent2026//trip//KO"];
     DAYS.forEach((d) => {
       this.itemsFor(d).forEach((it) => {
         const start = it.start || it.start_time, end = it.end || it.end_time;
@@ -150,6 +203,33 @@ const Planner = {
     lines.push("END:VCALENDAR");
     download("reinvent2026-schedule.ics", lines.join("\r\n"), "text/calendar");
     toast("ICS 파일을 저장했어요");
+  },
+
+  printView() {
+    const rows = DAYS.map((d) => {
+      const items = this.itemsFor(d);
+      if (!items.length) return "";
+      return `<h2>${dayLabel(d)}</h2>
+        <table><tr><th style="width:130px;">시간 (현지)</th><th>일정</th><th>장소</th></tr>
+        ${items.map((it) => {
+          const time = `${it.start || it.start_time || ""}${(it.end || it.end_time) ? "–" + (it.end || it.end_time) : ""}`;
+          const kst = kstRange(d, it.start || it.start_time, it.end || it.end_time);
+          return `<tr><td>${esc(time)}${kst ? `<br><span style="color:#666;">🇰🇷${kst}</span>` : ""}</td><td>${esc(it.title)}</td><td>${esc(it.venue || "")}</td></tr>`;
+        }).join("")}</table>`;
+    }).join("");
+    const w = window.open("", "_blank");
+    if (!w) { toast("팝업 차단을 해제해 주세요"); return; }
+    w.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>re:Invent 2026 일정표</title>
+      <style>body{font-family:-apple-system,"Apple SD Gothic Neo",sans-serif;max-width:820px;margin:24px auto;padding:0 16px;color:#000;}
+      h1{font-size:22px;margin:0 0 4px;}h2{font-size:16px;margin:22px 0 8px;border-bottom:2px solid #000;padding-bottom:4px;}
+      table{width:100%;border-collapse:collapse;font-size:13px;}th,td{border:1px solid #999;padding:6px 8px;text-align:left;vertical-align:top;}
+      th{background:#eee;}.meta{color:#666;font-size:12px;margin:0 0 8px;}</style></head><body>
+      <h1>re:Invent 2026 출장 일정표</h1>
+      <p class="meta">${esc(S().profile.nickname || "게스트")} · 현지 시간 기준</p>
+      ${rows || "<p>일정이 비어 있어요.</p>"}
+      <script>window.onload=function(){window.print();};<\/script>
+      </body></html>`);
+    w.document.close();
   }
 };
 
@@ -192,7 +272,7 @@ Views.planner = function () {
       const w = Weather.iconFor(d);
       return `<button data-day="${d}" class="${d === plannerDay ? "active" : ""}">${dayLabel(d)}${w ? " " + w : ""}</button>`;
     }).join("")}</div>
-    <div id="pl-timeline">${Planner.renderTimeline(plannerDay)}</div>
+    <div id="pl-timeline">${Planner.renderTimetable(plannerDay)}</div>
     <div class="card"><h3>🗺️ 동선 정보</h3>
       <button class="btn ghost block left info-btn" id="ri-venues">🗺️ 베뉴 6곳·지도</button>
       <button class="btn ghost block left info-btn" id="ri-shuttle">🚌 베뉴 간 셔틀</button>
@@ -204,7 +284,10 @@ Views.planner = function () {
         <label class="check-item"><input type="checkbox" data-fx="${f.id}" ${S().fixed_off.includes(f.id) ? "" : "checked"}>
         <span>${esc(f.start)} ${esc(f.title)} <span class="muted">· ${esc(f.venue)}</span></span></label>`).join("") || `<p class="muted">이 날의 고정 이벤트가 없어요</p>`}
     </div>
-    <button class="btn ghost block" id="pl-ics">📅 ICS로 내보내기 (캘린더 연동)</button>`;
+    <div class="row">
+      <button class="btn ghost small" id="pl-ics">📅 ICS 내보내기</button>
+      <button class="btn ghost small" id="pl-print">🖨️ 인쇄용 일정표</button>
+    </div>`;
   $$("#view-planner [data-day]").forEach((b) => b.onclick = () => { plannerManual = true; plannerDay = b.dataset.day; Views.planner(); });
   $("#ri-venues").onclick = () => openDrawer("베뉴 6곳", RouteInfo.venuesHTML());
   $("#ri-shuttle").onclick = () => openDrawer("베뉴 간 셔틀", RouteInfo.shuttleHTML());
@@ -212,6 +295,7 @@ Views.planner = function () {
   $("#ri-strategy").onclick = () => openDrawer("베뉴 이동 전략", RouteInfo.strategyHTML());
   $$("#view-planner [data-fx]").forEach((c) => c.onchange = () => Planner.toggleFixed(c.dataset.fx));
   $("#pl-ics").onclick = () => Planner.exportICS();
+  $("#pl-print").onclick = () => Planner.printView();
   $$("#pl-timeline [data-pitem]").forEach((it) => it.addEventListener("click", () => {
     const id = it.dataset.pitem;
     if (!id) return;

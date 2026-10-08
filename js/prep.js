@@ -17,8 +17,25 @@ Views.prep = function () {
   const missing = (v) => !v ? `<span class="badge warn">미정</span>` : esc(v);
   const cl = Packing.list();
   const done = cl.filter((x) => x.done).length;
+  const dd = dday();
+  const dtasks = DepartTasks.all();
+  const dDone = S().depart_done || {};
+  const dtDoneCount = dtasks.filter((x) => dDone[x.id]).length;
 
   el.innerHTML = `
+    <div class="card"><h3>🗓️ 출발 전 할 일 <span class="badge ${dd <= 7 ? "warn" : "info"}">D-${dd > 0 ? dd : "day"}</span></h3>
+      <div class="progress"><div style="width:${Math.round(dtDoneCount / dtasks.length * 100)}%"></div></div>
+      <div class="muted" style="font-size:12px;margin-bottom:6px;">${dtDoneCount}/${dtasks.length} 완료</div>
+      ${dtasks.map((x) => {
+        const urgent = dd <= x.d;
+        const isDone = !!dDone[x.id];
+        return `<label class="check-item${isDone ? " done" : ""}">
+          <input type="checkbox" data-dt="${x.id}" ${isDone ? "checked" : ""}>
+          <span><span class="badge ${urgent && !isDone ? "warn" : ""}">D-${x.d}</span> ${esc(x.text)}</span>
+        </label>`;
+      }).join("")}
+    </div>
+
     <div class="card"><h3>✈️ 내 출장 정보</h3>
       <h4 style="margin:8px 0 4px;font-size:14px;">가는 편 (ICN → LAS) ${missing(f.outbound.flight_no)}</h4>
       <div class="kv"><span>편명</span><b>${esc(f.outbound.flight_no) || "-"}</b></div>
@@ -56,6 +73,7 @@ Views.prep = function () {
         <a class="btn ghost block left info-btn" href="${r.url}" target="_blank" rel="noopener">🔗 ${esc(r.title)}<br><span class="muted" style="font-size:12px;font-weight:400;">${esc(r.desc)}</span></a>`).join("")}
     </div>`;
 
+  $$("#view-prep [data-dt]").forEach((c) => c.onchange = () => DepartTasks.toggle(c.dataset.dt));
   $$("#view-prep [data-guide]").forEach((b) => b.onclick = () => {
     const s = (window.APP_DATA.prep_sections || [])[Number(b.dataset.guide)];
     if (s) openDrawer(s.title, s.html);
