@@ -24,24 +24,35 @@ Views.prep = function () {
     </div>
 
     <div class="card"><h3>🎒 준비물 체크리스트</h3>
-      <div class="progress"><div style="width:${Math.round(done / cl.length * 100)}%"></div></div>
+      <div class="progress"><div style="width:${cl.length ? Math.round(done / cl.length * 100) : 0}%"></div></div>
       <div class="muted" style="font-size:12px;margin-bottom:6px;">${done}/${cl.length} 완료</div>
-      ${cl.map((c) => `<label class="check-item${c.done ? " done" : ""}"><input type="checkbox" data-ck="${c.id}" ${c.done ? "checked" : ""}><span>${esc(c.item)}</span></label>`).join("")}
+      ${cl.map((c) => `<div class="check-item${c.done ? " done" : ""}">
+        <label class="grow"><input type="checkbox" data-ck="${c.id}" ${c.done ? "checked" : ""}><span>${esc(c.item)}</span></label>
+        <span class="row-actions">
+          <button class="icon-btn" data-ckedit="${c.id}" title="수정">✏️</button>
+          <button class="icon-btn" data-ckdel="${c.id}" title="삭제">🗑️</button>
+        </span>
+      </div>`).join("")}
+      <button class="btn ghost block small" id="ck-add" style="margin-top:8px;">＋ 항목 추가</button>
     </div>
 
     <div class="card"><h3>📖 출장 가이드</h3>
       ${(window.APP_DATA.prep_sections || []).map((s, i) => `
-        <div class="accordion" id="acc-${s.id}">
-          <button data-acc="${i}"><span>${esc(s.title)}</span><span>▾</span></button>
-          <div class="acc-body">${s.html}</div>
-        </div>`).join("")}
+        <button class="btn ghost block left info-btn" data-guide="${i}">📘 ${esc(s.title)}</button>`).join("")}
     </div>`;
 
-  $$("#view-prep [data-acc]").forEach((b) => b.onclick = () => b.closest(".accordion").classList.toggle("open"));
+  $$("#view-prep [data-guide]").forEach((b) => b.onclick = () => {
+    const s = (window.APP_DATA.prep_sections || [])[Number(b.dataset.guide)];
+    if (s) openDrawer(s.title, s.html);
+  });
   $$("#view-prep [data-ck]").forEach((c) => c.onchange = () => {
     const item = Packing.list().find((x) => x.id === c.dataset.ck);
     if (item) { item.done = c.checked; Store.save(); Views.prep(); }
   });
+  $$("#view-prep [data-ckedit]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); Packing.editItem(b.dataset.ckedit); });
+  $$("#view-prep [data-ckdel]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); Packing.askDelete(b.dataset.ckdel); });
+  const ckAdd = $("#ck-add");
+  if (ckAdd) ckAdd.onclick = () => Packing.editItem(null);
   $("#prep-edit-trip").onclick = Prep.editTrip;
 };
 
@@ -78,7 +89,7 @@ const Prep = {
     $("#tr-cancel").onclick = closeModal;
   },
   openSection(secId) {
-    const acc = document.getElementById("acc-" + secId);
-    if (acc) { acc.classList.add("open"); acc.scrollIntoView({ behavior: "smooth", block: "start" }); }
+    const s = (window.APP_DATA.prep_sections || []).find((x) => x.id === secId);
+    if (s) openDrawer(s.title, s.html);
   }
 };

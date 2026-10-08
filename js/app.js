@@ -38,25 +38,27 @@ function download(filename, text, mime) {
 
 /* ---------- time ---------- */
 const EVENT_START = "2026-11-30", EVENT_END = "2026-12-04";
-function vegasParts(d) {
+const WD_KO = ["일", "월", "화", "수", "목", "금", "토"];
+function tzParts(tz, d) {
   const p = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit",
+    timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
     hour: "2-digit", minute: "2-digit", hour12: false
   }).formatToParts(d || new Date());
   const o = {};
   p.forEach((x) => { o[x.type] = x.value; });
   return o; // {year, month, day, hour, minute}
 }
-function vegasDateStr(d) { const p = vegasParts(d); return `${p.year}-${p.month}-${p.day}`; }
-function kstStr(d) {
-  return new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "Asia/Seoul", month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit", hour12: false
-  }).format(d || new Date());
+function vegasParts(d) { return tzParts("America/Los_Angeles", d); }
+function fmtDate(p) { // "10.8(목)"
+  const wd = WD_KO[new Date(Date.UTC(+p.year, +p.month - 1, +p.day, 12)).getUTCDay()];
+  return `${+p.month}.${+p.day}(${wd})`;
 }
-function dayLabel(ds) { // "2026-11-30" -> "11/30 (월)"
-  const wd = ["일", "월", "화", "수", "목", "금", "토"][new Date(ds + "T12:00:00").getDay()];
+function fmtDateTime(p) { return `${fmtDate(p)} ${p.hour}:${p.minute}`; } // "10.8(목) 14:27"
+function vegasDateStr(d) { const p = vegasParts(d); return `${p.year}-${p.month}-${p.day}`; }
+function dayLabel(ds) { // "2026-11-30" -> "11.30(월)"
+  const wd = WD_KO[new Date(ds + "T12:00:00").getDay()];
   const [, m, d] = ds.split("-");
-  return `${Number(m)}/${Number(d)} (${wd})`;
+  return `${Number(m)}.${Number(d)}(${wd})`;
 }
 function dday() {
   const today = vegasDateStr();
@@ -93,7 +95,9 @@ function defaultState() {
     checklist: null,         // null -> defaults from PREP
     fixed_off: [],           // fixed event ids turned off
     install_dismissed: false,
-    fx_rate: 1450
+    fx_rate: 1450,
+    theme: (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light",
+    mock_sessions: false   // true -> 2025 샘플 세션으로 체험 (테스트용)
   };
 }
 const Store = {
@@ -126,6 +130,7 @@ const Views = {};
 let currentTab = "home";
 function switchTab(name) {
   currentTab = name;
+  if (name === "planner" && typeof plannerManual !== "undefined") plannerManual = false; // 들어올 때마다 현지 날짜로
   $$("#tabbar button").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
   $$("#views .view").forEach((v) => v.classList.toggle("active", v.id === "view-" + name));
   if (Views[name]) Views[name]();
@@ -134,10 +139,50 @@ function switchTab(name) {
 
 /* ---------- header clock ---------- */
 function tickClock() {
-  const p = vegasParts();
   const v = $("#clock-vegas"), k = $("#clock-kst");
-  if (v) v.textContent = `라스베가스 ${p.month}/${p.day} ${p.hour}:${p.minute}`;
-  if (k) k.textContent = `한국 ${kstStr()}`;
+  if (v) v.textContent = `라스베가스 ${fmtDateTime(vegasParts())}`;
+  if (k) k.textContent = `한국 ${fmtDateTime(tzParts("Asia/Seoul"))}`;
+}
+
+/* ---------- theme (dark mode) ---------- */
+function applyTheme() {
+  const t = S().theme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = t;
+  const mc = document.querySelector('meta[name="theme-color"]');
+  if (mc) mc.content = t === "dark" ? "#0e1420" : "#0f1f3d";
+  const btn = $("#set-theme");
+  if (btn) btn.textContent = t === "dark" ? "☀️ 라이트모드" : "🌙 다크모드";
+}
+
+/* ---------- drawer (side panel for tips/info) ---------- */
+function openDrawer(title, html) {
+  let root = $("#drawer-root");
+  if (!root) { root = document.createElement("div"); root.id = "drawer-root"; document.body.appendChild(root); }
+  root.innerHTML = `<div class="drawer-overlay" id="drawer-overlay">
+    <aside class="drawer" role="dialog" aria-label="${esc(title)}">
+      <div class="drawer-head"><strong>${esc(title)}</strong><button class="drawer-close" id="drawer-close" aria-label="닫기">✕</button></div>
+      <div class="drawer-body">${html}</div>
+    </aside></div>`;
+  requestAnimationFrame(() => requestAnimationFrame(() => $("#drawer-overlay").classList.add("open")));
+  const close = () => {
+    const ov = $("#drawer-overlay");
+    if (!ov) return;
+    ov.classList.remove("open");
+    setTimeout(() => { const r = $("#drawer-root"); if (r) r.innerHTML = ""; }, 260);
+  };
+  $("#drawer-close").onclick = close;
+  $("#drawer-overlay").addEventListener("click", (e) => { if (e.target.id === "drawer-overlay") close(); });
+}
+function closeDrawer() { const r = $("#drawer-root"); if (r) r.innerHTML = ""; }
+
+/* ---------- sessions accessor (supports 2025 mock mode) ---------- */
+function allSessions() {
+  if (S() && S().mock_sessions && window.MOCK_SESSIONS_2025) return window.MOCK_SESSIONS_2025;
+  return (window.APP_DATA && window.APP_DATA.sessions) || [];
+}
+function sessionsPending() {
+  if (S() && S().mock_sessions) return false;
+  return !!(window.APP_DATA.meta && window.APP_DATA.meta.sessions_pending);
 }
 
 /* ---------- install guide (PWA) ---------- */
@@ -253,16 +298,18 @@ Views.home = function () {
   const clDone = cl.filter((x) => x.done).length;
   if (clDone < cl.length) todos.push({ text: `준비물 ${clDone}/${cl.length} 완료`, tab: "prep" });
 
-  const pending = (window.APP_DATA.meta && window.APP_DATA.meta.sessions_pending);
+  const pending = sessionsPending();
+  const mockOn = !!(S().mock_sessions && window.MOCK_SESSIONS_2025);
   const upcoming = ph === "during" ? Planner.todayItems() : [];
 
   $("#view-home").innerHTML = `
     <div class="card" style="background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;">
       <div style="font-size:13px;opacity:.85">안녕하세요, ${nick} 👋</div>
       <div style="font-size:30px;font-weight:800;margin:4px 0;">${ddText}</div>
-      <div style="font-size:13px;opacity:.85">11/30–12/4 · 라스베가스 (현지 ${vegasParts().month}/${vegasParts().day})</div>
+      <div style="font-size:13px;opacity:.85">11/30–12/4 · 라스베가스 (현지 ${fmtDate(vegasParts())})</div>
     </div>
-    ${pending ? `<div class="notice">📡 세션 카탈로그 수집 대기 중 — 로그인이 완료되면 세션 탭이 활성화됩니다.</div>` : ""}
+    ${pending ? `<div class="notice">📡 세션 카탈로그 수집 대기 중 — 공식 카탈로그에서 수집하면 세션 탭이 활성화됩니다.</div>` : ""}
+    ${mockOn ? `<div class="notice">🧪 <strong>2025 샘플 세션</strong>으로 체험 중이에요. 실제 데이터가 아닙니다 — 설정에서 끌 수 있어요.</div>` : ""}
     ${ph === "during" && upcoming.length ? `<div class="card"><h3>오늘의 일정</h3>${upcoming.slice(0, 4).map(Planner.itemHTML).join("")}<button class="btn ghost block small" data-go="planner">전체 일정 보기</button></div>` : ""}
     <div class="card"><h3>할 일</h3>
       ${todos.length ? todos.map((t) => `<div class="check-item" data-go="${t.tab}"><span>▫️ ${esc(t.text)}</span></div>`).join("") : `<p class="muted">할 일이 없어요. 완벽해요 ✨</p>`}
@@ -281,12 +328,23 @@ Views.home = function () {
         <button class="btn ghost small" id="set-backup">백업 내보내기</button>
         <button class="btn ghost small" id="set-install">설치 안내 다시 보기</button>
       </div>
+      <div class="row" style="margin-top:8px;">
+        <button class="btn ghost small" id="set-theme">🌙 다크모드</button>
+        <button class="btn ghost small" id="set-mock">🧪 2025 샘플 세션</button>
+      </div>
     </div>`;
   $$("#view-home [data-go]").forEach((el) => el.onclick = () => switchTab(el.dataset.go));
   $("#set-profile").onclick = Settings.editProfile;
   $("#set-transfer").onclick = () => TransferUI.showExport();
   $("#set-backup").onclick = () => TransferUI.exportFile();
   $("#set-install").onclick = () => { S().install_dismissed = false; maybeShowInstallGuide(); };
+  $("#set-theme").onclick = () => {
+    S().theme = S().theme === "dark" ? "light" : "dark";
+    Store.save(); applyTheme();
+    toast(S().theme === "dark" ? "다크모드로 바꿨어요 🌙" : "라이트모드로 바꿨어요 ☀️");
+  };
+  $("#set-mock").onclick = () => Settings.toggleMock();
+  applyTheme();
 };
 
 const Settings = {
@@ -313,6 +371,14 @@ const Settings = {
       Store.save(); closeModal(); Views.home(); toast("저장했어요");
     };
     $("#pf-cancel").onclick = closeModal;
+  },
+
+  toggleMock() {
+    if (!window.MOCK_SESSIONS_2025) { toast("샘플 데이터 파일이 없어요"); return; }
+    S().mock_sessions = !S().mock_sessions;
+    Store.save();
+    toast(S().mock_sessions ? "🧪 2025 샘플 세션으로 체험해요" : "샘플 세션을 껐어요");
+    Views.home();
   }
 };
 
@@ -329,12 +395,50 @@ const Packing = {
   list() {
     if (!S().checklist) { S().checklist = Packing.defaults(); Store.save(); }
     return S().checklist;
+  },
+  editItem(id) {
+    const list = Packing.list();
+    const it = id ? list.find((x) => x.id === id) : null;
+    openModal(`
+      <h2>${it ? "준비물 수정" : "준비물 추가"}</h2>
+      <label class="field">항목</label>
+      <input type="text" id="ck-text" value="${esc(it ? it.item : "")}" placeholder="예: 선글라스" maxlength="60">
+      <button class="btn block" id="ck-save">저장</button>
+      <button class="btn ghost block" id="ck-cancel">취소</button>`);
+    const input = $("#ck-text");
+    if (input) input.focus();
+    const save = () => {
+      const v = input.value.trim();
+      if (!v) { toast("내용을 입력해 주세요"); return; }
+      if (it) it.item = v;
+      else list.push({ id: "pk" + Date.now().toString(36), item: v, done: false });
+      Store.save(); closeModal(); Views.prep(); toast("저장했어요");
+    };
+    $("#ck-save").onclick = save;
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") save(); });
+    $("#ck-cancel").onclick = closeModal;
+  },
+  askDelete(id) {
+    const list = Packing.list();
+    const it = list.find((x) => x.id === id);
+    if (!it) return;
+    openModal(`
+      <h2>삭제할까요?</h2>
+      <p>"${esc(it.item)}" 항목을 삭제합니다.</p>
+      <button class="btn danger block" id="ck-del-yes">삭제</button>
+      <button class="btn ghost block" id="ck-cancel">취소</button>`);
+    $("#ck-del-yes").onclick = () => {
+      S().checklist = list.filter((x) => x.id !== id);
+      Store.save(); closeModal(); Views.prep(); toast("삭제했어요");
+    };
+    $("#ck-cancel").onclick = closeModal;
   }
 };
 
 /* ---------- boot ---------- */
 document.addEventListener("DOMContentLoaded", () => {
   Store.load();
+  applyTheme();
   tickClock();
   setInterval(tickClock, 30000);
   $$("#tabbar button").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));

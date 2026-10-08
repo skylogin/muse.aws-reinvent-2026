@@ -3,9 +3,19 @@
 
 const DAYS = ["2026-11-29", "2026-11-30", "2026-12-01", "2026-12-02", "2026-12-03", "2026-12-04", "2026-12-05"];
 let plannerDay = null;
+let plannerManual = false; // true면 사용자가 직접 고른 날짜 유지
+function todayClamped() {
+  const t = vegasDateStr();
+  if (t < DAYS[0]) return DAYS[0];
+  if (t > DAYS[DAYS.length - 1]) return DAYS[DAYS.length - 1];
+  return t;
+}
+
+/* 공식 카탈로그 베뉴 표기 → event_info 베뉴명 매핑 (좌표 조회용) */
+const VENUE_ALIASES = { "Wynn/Encore": "Wynn", "Venetian": "The Venetian" };
 
 const Planner = {
-  sessionById(id) { return (window.APP_DATA.sessions || []).find((s) => s.session_id === id); },
+  sessionById(id) { return allSessions().find((s) => s.session_id === id); },
 
   itemsFor(date) {
     const items = [];
@@ -42,7 +52,8 @@ const Planner = {
 
   /* ---- travel ---- */
   venueCoords(name) {
-    const v = (window.APP_DATA.event_info.venues || []).find((x) => x.name === name);
+    const key = VENUE_ALIASES[name] || name;
+    const v = (window.APP_DATA.event_info.venues || []).find((x) => x.name === key);
     return v ? { lat: v.lat, lng: v.lng } : null;
   },
   havKm(a, b) {
@@ -143,7 +154,7 @@ const Planner = {
 };
 
 Views.planner = function () {
-  if (!plannerDay) plannerDay = vegasDateStr() < "2026-11-29" ? "2026-11-30" : vegasDateStr();
+  if (!plannerManual) plannerDay = todayClamped(); // 탭을 열 때마다 현지 날짜로
   if (!DAYS.includes(plannerDay)) plannerDay = "2026-11-30";
   const el = $("#view-planner");
   el.innerHTML = `
@@ -155,7 +166,7 @@ Views.planner = function () {
         <span>${esc(f.start)} ${esc(f.title)} <span class="muted">· ${esc(f.venue)}</span></span></label>`).join("") || `<p class="muted">이 날의 고정 이벤트가 없어요</p>`}
     </div>
     <button class="btn ghost block" id="pl-ics">📅 ICS로 내보내기 (캘린더 연동)</button>`;
-  $$("#view-planner [data-day]").forEach((b) => b.onclick = () => { plannerDay = b.dataset.day; Views.planner(); });
+  $$("#view-planner [data-day]").forEach((b) => b.onclick = () => { plannerManual = true; plannerDay = b.dataset.day; Views.planner(); });
   $$("#view-planner [data-fx]").forEach((c) => c.onchange = () => Planner.toggleFixed(c.dataset.fx));
   $("#pl-ics").onclick = () => Planner.exportICS();
   $$("#pl-timeline [data-pitem]").forEach((it) => it.addEventListener("click", () => {
