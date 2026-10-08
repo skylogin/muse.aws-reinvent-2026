@@ -52,7 +52,10 @@ const Planner = {
   itemsFor(date) {
     const items = [];
     FIXED_EVENTS.filter((f) => f.date === date && !S().fixed_off.includes(f.id))
-      .forEach((f) => items.push({ kind: "fixed", ...f }));
+      .forEach((f) => {
+        const edit = (S().fixed_edits || {})[f.id];
+        items.push({ kind: "fixed", ...f, ...(edit || {}) });
+      });
     (S().daily_plan[date] || []).forEach((p) => {
       const s = this.sessionById(p.session_id);
       if (s) items.push({ kind: "session", ...s, note: p.note });
@@ -150,15 +153,18 @@ const Planner = {
     blocks.forEach((b) => {
       const top = b.s - START;
       const hgt = Math.max(b.e - b.s, 46);
-      const left = `calc(${GUTTER}px + (100% - ${GUTTER}px) * ${b.col / b.cols})`;
-      const width = `calc((100% - ${GUTTER}px) / ${b.cols} - 6px)`;
+      // 카드 덱 스타일: 겹치는 블록은 살짝씩 어긋나게 겹쳐 표시 (구글 캘린더식)
+      const OFFSET = 18;
+      const left = `calc(${GUTTER + b.col * OFFSET}px)`;
+      const width = `calc(100% - ${GUTTER + b.col * OFFSET}px - 4px)`;
+      const z = 1 + b.col;
       const isFixed = b.it.kind === "fixed";
       const vStyle = this.venueBlockStyle(b.it.venue, isFixed);
       const time = `${b.it.start || b.it.start_time || ""}${(b.it.end || b.it.end_time) ? "–" + (b.it.end || b.it.end_time) : ""}`;
       const kst = kstRange(date, b.it.start || b.it.start_time, b.it.end || b.it.end_time);
       const note = b.it.note || (S().session_notes[b.it.session_id || b.it.id] || {}).memo;
       html += `<div class="tt-block" data-pitem="${esc(b.it.session_id || b.it.id)}"
-        style="top:${top}px;height:${hgt}px;left:${left};width:${width};${vStyle}" role="button" tabindex="0">
+        style="top:${top}px;height:${hgt}px;left:${left};width:${width};z-index:${z};${vStyle}" role="button" tabindex="0">
         <div class="tt-time">${esc(time)}</div>
         ${kst ? `<div class="tt-kst">🇰🇷${kst}</div>` : ""}
         <div class="tt-title">${isFixed ? `<span class="badge warn">고정</span> ` : ""}<strong>${esc(b.it.title)}</strong></div>
@@ -191,6 +197,77 @@ const Planner = {
 
     return `<div class="tt-wrap"><div class="tt-grid" style="height:${END - START}px">${html}</div>
       <div class="tt-note muted">탭하면 상세 보기 · 🇰🇷는 한국 시간</div></div>`;
+  },
+
+  openItem(id, date) {
+    const it = this.itemsFor(date).find((x) => (x.session_id || x.id) === id);
+    if (!it) return;
+
+    if (it.kind === "fixed") {
+      const edit = (S().fixed_edits || {})[it.id] || {};
+      openModal(`
+        <h2>고정 일정</h2>
+        <label class="field">제목</label>
+        <input type="text" id="pf-title" value="${esc(edit.title || it.title || "")}">
+        <div class="row">
+          <div><label class="field">시작</label><input type="time" id="pf-start" value="${esc(edit.start || it.start || "")}"></div>
+          <div><label class="field">종료</label><input type="time" id="pf-end" value="${esc(edit.end || it.end || "")}"></div>
+        </div>
+        <label class="field">장소</label>
+        <input type="text" id="pf-venue" value="${esc(edit.venue || it.venue || "")}">
+        <label class="field">메모</label>
+        <textarea id="pf-note" rows="2" placeholder="메모">${esc(edit.note || it.note || "")}</textarea>
+        <button class="btn block" id="pf-save">저장</button>
+        <button class="btn ghost block" id="pf-close">닫기</button>`);
+      $("#pf-save").onclick = () => {
+        S().fixed_edits = S().fixed_edits || {};
+        S().fixed_edits[it.id] = {
+          title: $("#pf-title").value.trim() || it.title,
+          start: $("#pf-start").value || it.start,
+          end: $("#pf-end").value || "",
+          venue: $("#pf-venue").value.trim(),
+          note: $("#pf-note").value.trim()
+        };
+        Store.save(); closeModal(); Views.planner(); toast("수정했어요");
+      };
+      $("#pf-close").onclick = closeModal;
+      return;
+    }
+
+    // session
+    const n = S().session_notes[id] || { rating: 0, memo: "" };
+    const kst = kstRange(it.date, it.start_time, it.end_time);
+    openModal(`
+      <h2 style="padding-right:8px;">${esc(it.title || "세션")}</h2>
+      <div class="muted" style="font-size:13px;margin-bottom:10px;">
+        ${it.date ? esc(dayLabel(it.date)) + " " : ""}${esc(it.start_time || "")}${it.end_time ? "–" + esc(it.end_time) : ""} (현지)
+        ${kst ? `<br>🇰🇷 ${kst}` : ""}
+        ${it.venue ? `<br>📍 ${esc(it.venue)}${it.room ? " · " + esc(it.room) : ""}` : ""}
+        ${it.code ? `<br><span class="badge">${esc(it.code)}</span>` : ""}
+      </div>
+      <label class="field">별점</label>
+      <div class="stars" id="pi-stars">${[1, 2, 3, 4, 5].map((i) => `<span data-s="${i}" class="${i <= n.rating ? "on" : ""}">★</span>`).join("")}</div>
+      <label class="field">메모</label>
+      <textarea id="pi-memo" rows="3" placeholder="배운 점, 후속 액션 등">${esc(n.memo)}</textarea>
+      <button class="btn block" id="pi-save">저장</button>
+      <button class="btn ghost block" id="pi-unfav">일정에서 빼기</button>
+      <button class="btn ghost block" id="pi-close">닫기</button>`);
+    let rating = n.rating;
+    $$("#pi-stars span").forEach((sp) => sp.onclick = () => {
+      rating = Number(sp.dataset.s);
+      $$("#pi-stars span").forEach((x) => x.classList.toggle("on", Number(x.dataset.s) <= rating));
+    });
+    $("#pi-save").onclick = () => {
+      S().session_notes[id] = { rating, memo: $("#pi-memo").value.trim(), updated_at: new Date().toISOString() };
+      Store.save(); closeModal(); Views.planner(); toast("저장했어요");
+    };
+    $("#pi-unfav").onclick = () => {
+      const st = S();
+      Object.keys(st.daily_plan).forEach((d) => { st.daily_plan[d] = (st.daily_plan[d] || []).filter((x) => x.session_id !== id); });
+      const fi = st.favorites.indexOf(id); if (fi >= 0) st.favorites.splice(fi, 1);
+      Store.save(); closeModal(); Views.planner(); toast("일정에서 뺐어요");
+    };
+    $("#pi-close").onclick = closeModal;
   },
 
   openNote(id) {
@@ -241,34 +318,47 @@ const Planner = {
 
   reportView() {
     let idx = Math.max(0, DAYS.indexOf(plannerDay));
+    let root = $("#report-screen");
+    if (!root) {
+      root = document.createElement("div");
+      root.id = "report-screen";
+      document.body.appendChild(root);
+    }
     const render = () => {
       const d = DAYS[idx];
       const items = this.itemsFor(d);
-      openModal(`
-        <div class="report">
-          <div class="report-head">
-            <button class="btn ghost small" id="rp-prev"${idx === 0 ? " disabled" : ""}>◀</button>
-            <div style="text-align:center;"><h2 style="margin:0;">${dayLabel(d)}</h2>
-            <div class="muted" style="font-size:12px;">re:Invent 2026 출장 일정 · 현지 시간</div></div>
-            <button class="btn ghost small" id="rp-next"${idx === DAYS.length - 1 ? " disabled" : ""}>▶</button>
-          </div>
-          ${items.length ? items.map((it) => {
-            const time = `${it.start || it.start_time || ""}${(it.end || it.end_time) ? "–" + (it.end || it.end_time) : ""}`;
-            const kst = kstRange(d, it.start || it.start_time, it.end || it.end_time);
-            return `<div class="report-item">
-              <div class="report-time">${esc(time)}</div>
-              <div class="report-title">${it.kind === "fixed" ? `<span class="badge warn">고정</span> ` : ""}${esc(it.title)}</div>
-              ${it.venue ? `<div class="report-venue">📍 ${esc(it.venue)}</div>` : ""}
-              ${kst ? `<div class="report-venue">🇰🇷 ${kst}</div>` : ""}
-            </div>`;
-          }).join("") : `<div class="empty-state"><p>등록된 일정이 없어요</p></div>`}
-          <div class="report-page muted">${idx + 1} / ${DAYS.length}</div>
+      root.innerHTML = `
+        <div class="report-screen-head">
+          <button class="btn ghost small" id="rp-back">◀ 뒤로</button>
+          <strong>📋 일정 보고서</strong>
+          <span style="width:64px;"></span>
         </div>
-        <button class="btn ghost block" id="rp-close">닫기</button>`);
+        <div class="report-screen-body">
+          <div class="report">
+            <div class="report-head">
+              <button class="btn ghost small" id="rp-prev"${idx === 0 ? " disabled" : ""}>◀</button>
+              <div style="text-align:center;"><h2 style="margin:0;">${dayLabel(d)}</h2>
+              <div class="muted" style="font-size:12px;">re:Invent 2026 출장 일정 · 현지 시간</div></div>
+              <button class="btn ghost small" id="rp-next"${idx === DAYS.length - 1 ? " disabled" : ""}>▶</button>
+            </div>
+            ${items.length ? items.map((it) => {
+              const time = `${it.start || it.start_time || ""}${(it.end || it.end_time) ? "–" + (it.end || it.end_time) : ""}`;
+              const kst = kstRange(d, it.start || it.start_time, it.end || it.end_time);
+              return `<div class="report-item">
+                <div class="report-time">${esc(time)}</div>
+                <div class="report-title">${it.kind === "fixed" ? `<span class="badge warn">고정</span> ` : ""}${esc(it.title)}</div>
+                ${it.venue ? `<div class="report-venue">📍 ${esc(it.venue)}</div>` : ""}
+                ${kst ? `<div class="report-venue">🇰🇷 ${kst}</div>` : ""}
+              </div>`;
+            }).join("") : `<div class="empty-state"><p>등록된 일정이 없어요</p></div>`}
+            <div class="report-page muted">${idx + 1} / ${DAYS.length}</div>
+          </div>
+        </div>`;
+      root.classList.add("open");
+      $("#rp-back").onclick = () => root.classList.remove("open");
       const prev = $("#rp-prev"), next = $("#rp-next");
       if (prev) prev.onclick = () => { if (idx > 0) { idx--; render(); } };
       if (next) next.onclick = () => { if (idx < DAYS.length - 1) { idx++; render(); } };
-      $("#rp-close").onclick = closeModal;
     };
     render();
   }
@@ -340,17 +430,6 @@ Views.planner = function () {
   $$("#pl-timeline [data-pitem]").forEach((it) => it.addEventListener("click", () => {
     const id = it.dataset.pitem;
     if (!id) return;
-    openModal(`<h2>일정 항목</h2>
-      <button class="btn block" id="pi-note">📝 메모 / 별점</button>
-      <button class="btn ghost block" id="pi-unfav">일정에서 빼기</button>
-      <button class="btn ghost block" id="pi-close">닫기</button>`);
-    $("#pi-note").onclick = () => Planner.openNote(id);
-    $("#pi-unfav").onclick = () => {
-      const st = S();
-      Object.keys(st.daily_plan).forEach((d) => { st.daily_plan[d] = (st.daily_plan[d] || []).filter((x) => x.session_id !== id); });
-      const fi = st.favorites.indexOf(id); if (fi >= 0) st.favorites.splice(fi, 1);
-      Store.save(); closeModal(); Views.planner();
-    };
-    $("#pi-close").onclick = closeModal;
+    Planner.openItem(id, plannerDay);
   }));
 };

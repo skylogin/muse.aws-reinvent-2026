@@ -108,6 +108,7 @@ function defaultState() {
     expenses: [],            // {id, date, owner, category, desc, amount_usd, amount_krw, receipt}
     checklist: null,         // null -> defaults from PREP
     fixed_off: [],           // fixed event ids turned off
+    fixed_edits: {},         // fixed event overrides {id: {title,start,end,venue,note}}
     install_dismissed: false,
     fx_rate: 1450,
     theme: (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light",
@@ -301,7 +302,9 @@ const Weather = {
         const t = Math.round(data.current.temperature_2m);
         const mx = Math.round(data.daily.temperature_2m_max[0]);
         const mn = Math.round(data.daily.temperature_2m_min[0]);
-        el.innerHTML = `${this.icon(data.current.weathercode)} 라스베가스 <strong>${t}°</strong> · 최고 ${mx}° / 최저 ${mn}°`;
+        el.innerHTML = `<div style="font-size:30px;line-height:1;">${this.icon(data.current.weathercode)}</div>
+          <div style="font-size:20px;font-weight:800;">${t}°</div>
+          <div style="font-size:11px;opacity:.8;">${mx}° / ${mn}°</div>`;
       }
     } catch (e) { if (el) el.style.display = "none"; }
   }
@@ -455,10 +458,14 @@ Views.home = function () {
 
   $("#view-home").innerHTML = `
     <div class="card" style="background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;">
-      <div style="font-size:13px;opacity:.85">안녕하세요, ${nick} 👋</div>
-      <div style="font-size:30px;font-weight:800;margin:4px 0;">${ddText}</div>
-      <div style="font-size:13px;opacity:.85">11/30–12/4 · 라스베가스 (현지 ${fmtDate(vegasParts())})</div>
-      <div id="home-weather" style="font-size:13px;opacity:.85;margin-top:2px;">⛅ 날씨 불러오는 중…</div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+        <div>
+          <div style="font-size:13px;opacity:.85">안녕하세요, ${nick} 👋</div>
+          <div style="font-size:30px;font-weight:800;margin:4px 0;">${ddText}</div>
+          <div style="font-size:13px;opacity:.85">11/30–12/4 · 라스베가스 (현지 ${fmtDate(vegasParts())})</div>
+        </div>
+        <div id="home-weather" style="text-align:center;flex-shrink:0;min-width:64px;">⛅</div>
+      </div>
     </div>
     ${pending ? `<div class="notice">📡 세션 카탈로그 수집 대기 중 — 공식 카탈로그에서 수집하면 세션 탭이 활성화됩니다.</div>` : ""}
 
