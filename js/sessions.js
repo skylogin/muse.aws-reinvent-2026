@@ -14,7 +14,6 @@ function roomLabel(s) {
 
 const Sessions = {
   q: "", f: { date: "", venue: "", type: "", level: "", topic: "", format: "", delivery: "" },
-  mode: "session", // session | term
   venueGroup: false, // 베뉴별 모아보기
   limit: SESSION_PAGE,
 
@@ -50,7 +49,7 @@ const Sessions = {
       });
       toast("관심 해제했어요");
       Store.save();
-      Sessions.renderResults();
+      Sessions.refreshAfterFav();
     } else {
       const s = this.all().find((x) => x.session_id === id);
       const c = s ? this.findConflict(s) : null;
@@ -83,7 +82,7 @@ const Sessions = {
       toast("내 일정에 담았어요 📅");
     } else toast("관심 세션에 담았어요");
     Store.save();
-    Sessions.renderResults();
+    Sessions.refreshAfterFav();
   },
 
   findConflict(s) {
@@ -178,7 +177,6 @@ const Sessions = {
     });
     $$("#d-topics [data-topic]").forEach((c) => c.onclick = () => {
       closeModal();
-      Sessions.mode = "session";
       Sessions.f.topic = c.dataset.topic;
       Sessions.limit = SESSION_PAGE;
       if (currentTab !== "sessions") switchTab("sessions"); else Views.sessions();
@@ -186,67 +184,13 @@ const Sessions = {
     });
   },
 
-  termBodyHTML() {
-    const hits = Sessions.q.trim() ? Sessions.termSearch(Sessions.q) : [];
-    if (Sessions.q.trim() && Sessions._lastRecorded !== Sessions.q) {
-      Sessions.recordSearch(Sessions.q, "term", hits.length);
-      Sessions._lastRecorded = Sessions.q;
-    }
-    return hits.length ? hits.map((h) => `
-      <div class="card session-card" data-hit='${esc(JSON.stringify(h))}'>
-        <span class="badge ${h.kind === "세션" ? "info" : ""}">${h.kind}</span>
-        <strong>${esc(h.title)}</strong><div class="muted">${esc(h.sub)}</div>
-      </div>`).join("")
-      : (Sessions.q.trim() ? `<div class="empty-state">검색 결과가 없어요</div>`
-        : `<div class="card"><h3>최근 검색</h3>${Sessions.historyHTML()}</div>`);
-  },
-  termSearch(q) {
-    q = q.trim().toLowerCase();
-    if (!q) return [];
-    const hits = [];
-    this.all().forEach((s) => {
-      const hay = `${s.title} ${(s.abstract || "")}`.toLowerCase();
-      if (hay.includes(q)) hits.push({ kind: "세션", title: s.title, sub: `${s.code || ""} · ${s.date || ""}`, id: s.session_id });
-    });
-    (window.APP_DATA.prep_sections || []).forEach((sec) => {
-      const text = sec.html.replace(/<[^>]+>/g, " ");
-      const idx = text.toLowerCase().indexOf(q);
-      if (idx >= 0) {
-        const snip = text.slice(Math.max(0, idx - 40), idx + 90).replace(/\s+/g, " ");
-        hits.push({ kind: "가이드", title: sec.title, sub: "…" + snip + "…", sec: sec.id });
-      }
-    });
-    // shuttle + venues from event_info
-    const sh = window.APP_DATA.event_info.shuttle;
-    if (sh && sh.note && sh.note.toLowerCase().includes(q))
-      hits.push({ kind: "가이드", title: "베뉴 간 셔틀", sub: sh.note.slice(0, 120), tab: "planner" });
-    (window.APP_DATA.event_info.venues || []).forEach((v) => {
-      if ((v.name + " " + (v.address || "")).toLowerCase().includes(q))
-        hits.push({ kind: "가이드", title: v.name, sub: v.address || "", tab: "planner" });
-    });
-    return hits.slice(0, 50);
-  },
-  recordSearch(query, scope, count) {
-    // 타이핑 중 중간 검색어("E"→"ES"→"ESTA")는 하나로 합침
-    const h = S().search_history, last = h[0];
-    if (last && last.scope === scope && Date.now() - Date.parse(last.at) < 15000 &&
-        (query.startsWith(last.query) || last.query.startsWith(query))) h.shift();
-    S().search_history.unshift({ query, scope, at: new Date().toISOString(), result_count: count });
-    S().search_history = S().search_history.slice(0, 50);
-    Store.save();
-  }
 };
 
 Views.sessions = function () {
   const el = $("#view-sessions");
   el.innerHTML = `
-    <div class="chip-row">
-      <button class="chip${Sessions.mode === "session" ? " on" : ""}" data-m="session">세션</button>
-      <button class="chip${Sessions.mode === "term" ? " on" : ""}" data-m="term">용어</button>
-      ${Sessions.mode === "session" ? `<button class="chip${Sessions.venueGroup ? " on" : ""}" id="ss-venue-group">📍 베뉴별</button>` : ""}
-    </div>
     <input type="search" id="ss-q" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false"
-      placeholder="${Sessions.mode === "term" ? "용어 검색 (예: 셔틀, ESTA, re:Play)" : "세션 검색 (제목·코드·연사)"}" value="${esc(Sessions.q)}">
+      placeholder="세션 검색 (제목·코드·연사·소개)" value="${esc(Sessions.q)}">
     <div id="ss-results"></div>`;
   bindSessionChrome();
   Sessions.renderResults();
@@ -258,15 +202,12 @@ Sessions.renderResults = function () {
   if (!box) return;
   const filterIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z"/></svg>`;
   let html = "", fab = false;
-  if (Sessions.mode === "term") {
-    html = Sessions.termBodyHTML();
-  } else if (Sessions.pending()) {
+  if (Sessions.pending()) {
     html = `
       <div class="empty-state"><div class="big">📡</div>
         <h3>세션 카탈로그 수집 대기 중</h3>
         <p>세션 목록을 가져오지 못했어요.<br>공식 카탈로그에서 다시 수집하면<br>여기에 2,000개+ 세션이 표시됩니다.</p>
-      </div>
-      <div class="card"><h3>최근 검색</h3>${Sessions.historyHTML()}</div>`;
+      </div>`;
   } else {
     const list = Sessions.filtered();
     const activeFilterCount = Object.values(Sessions.f).filter((v) => v).length;
@@ -276,7 +217,10 @@ Sessions.renderResults = function () {
     const more = !Sessions.venueGroup && list.length > shown
       ? `<button class="btn ghost block load-more" id="ss-more">더 보기 (${(list.length - shown).toLocaleString("ko-KR")}개 남음)</button>` : "";
     html = `
-      <div class="muted" style="margin:4px 0 8px;">${list.length.toLocaleString("ko-KR")}개 세션${Sessions.venueGroup ? " · 베뉴별" : ""}${activeFilterCount ? ` · 필터 ${activeFilterCount}개` : ""}</div>
+      <div class="ss-bar">
+        <span class="muted">${list.length.toLocaleString("ko-KR")}개 세션${activeFilterCount ? ` · 필터 ${activeFilterCount}개` : ""}</span>
+        <button class="chip${Sessions.venueGroup ? " on" : ""}" id="ss-venue-group" aria-pressed="${Sessions.venueGroup}">📍 베뉴별</button>
+      </div>
       ${cards}${more}
       <button id="ss-filter-fab" class="fab" aria-label="필터${activeFilterCount ? ` (${activeFilterCount}개 적용)` : ""}">${filterIcon}${activeFilterCount ? `<span class="fab-badge">${activeFilterCount}</span>` : ""}</button>`;
     fab = true;
@@ -288,8 +232,15 @@ Sessions.renderResults = function () {
   if (fabBtn) fabBtn.onclick = () => Sessions.openFilterSheet();
   const moreBtn = $("#ss-more");
   if (moreBtn) moreBtn.onclick = () => { Sessions.limit += SESSION_PAGE; Sessions.renderResults(); };
+  const vg = $("#ss-venue-group");
+  if (vg) vg.onclick = () => { Sessions.venueGroup = !Sessions.venueGroup; Sessions.renderResults(); };
   const clr = $("#ss-clear-f");
   if (clr) clr.onclick = () => { Sessions.resetFilters(); Sessions.renderResults(); };
+};
+
+/* 내 일정 화면에서 세션 소개를 열어 관심을 바꿨다면 그 화면도 갱신 */
+Sessions.refreshAfterFav = function () {
+  if (currentTab === "planner") Views.planner(); else Sessions.renderResults();
 };
 
 Sessions.resetFilters = function () {
@@ -354,47 +305,12 @@ function bindHitCards() {
   $$("#view-sessions [data-fav]").forEach((b) => b.addEventListener("click", (e) => {
     e.stopPropagation(); Sessions.toggleFav(b.dataset.fav);
   }));
-  $$("#view-sessions .session-card[data-hit]").forEach((c) => c.addEventListener("click", () => {
-    const h = JSON.parse(c.dataset.hit);
-    if (h.kind === "세션") Sessions.openDetail(h.id);
-    else if (h.tab) switchTab(h.tab);
-    else { switchTab("prep"); setTimeout(() => Prep.openSection(h.sec), 100); }
-  }));
 }
 
 function bindSessionChrome() {
-  $$("#view-sessions [data-m]").forEach((b) => b.onclick = () => {
-    if (Sessions.mode === b.dataset.m) return;
-    Sessions.mode = b.dataset.m; Sessions.q = ""; Sessions.limit = SESSION_PAGE; Views.sessions();
-  });
-  const vg = $("#ss-venue-group");
-  if (vg) vg.onclick = () => { Sessions.venueGroup = !Sessions.venueGroup; vg.classList.toggle("on", Sessions.venueGroup); Sessions.renderResults(); };
   const q = $("#ss-q");
   let t;
   const run = () => { clearTimeout(t); Sessions.q = q.value; Sessions.limit = SESSION_PAGE; Sessions.renderResults(); };
   q.addEventListener("input", () => { clearTimeout(t); t = setTimeout(run, 250); });
   q.addEventListener("keydown", (e) => { if (e.key === "Enter") { run(); q.blur(); } });
 }
-
-Sessions.historyHTML = function () {
-  const h = S().search_history;
-  if (!h.length) return `<p class="muted">아직 검색 기록이 없어요</p>`;
-  return h.slice(0, 10).map((x, i) => `
-    <div class="kv"><span data-hq="${esc(x.query)}" style="cursor:pointer;">🔍 ${esc(x.query)} <span class="badge">${x.scope === "term" ? "용어" : "세션"}</span></span>
-    <span class="muted">${x.result_count}건 <button class="btn ghost small" data-hdel="${i}">삭제</button></span></div>`).join("") +
-    `<button class="btn ghost small" id="h-clear" style="margin-top:8px;">기록 전체 삭제</button>`;
-};
-
-// history delete (event delegation)
-document.addEventListener("click", (e) => {
-  const del = e.target.closest("[data-hdel]");
-  if (del) { e.stopPropagation(); S().search_history.splice(Number(del.dataset.hdel), 1); Store.save(); Sessions.renderResults(); return; }
-  if (e.target.id === "h-clear") { S().search_history = []; Store.save(); Sessions.renderResults(); return; }
-  const re = e.target.closest("[data-hq]");
-  if (re) {
-    const q = $("#ss-q");
-    Sessions.q = re.dataset.hq;
-    if (q) q.value = Sessions.q;
-    Sessions.renderResults();
-  }
-});

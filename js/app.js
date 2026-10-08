@@ -28,15 +28,68 @@ function openModal(html, opts) {
 }
 function closeModal() { $("#modal-root").innerHTML = ""; document.body.classList.remove("modal-open"); }
 
+/* 하단 시트 (bottom sheet): 손잡이 + 제목/닫기 + 스크롤 본문 + 하단 고정 버튼
+   opts: { title, body, actions, sticky } — 손잡이·제목줄을 아래로 끌면 닫힘 */
+function openSheet(opts) {
+  const root = $("#modal-root");
+  root.innerHTML = `<div class="overlay" id="modal-overlay">
+    <div class="sheet bs" role="dialog" aria-modal="true" aria-label="${esc(opts.title || "")}">
+      <div class="bs-drag">
+        <div class="bs-grab" aria-hidden="true"></div>
+        <div class="bs-head"><h2>${esc(opts.title || "")}</h2>
+          <button class="bs-close" type="button" aria-label="닫기">✕</button></div>
+      </div>
+      <div class="bs-body">${opts.body || ""}</div>
+      ${opts.actions ? `<div class="bs-actions">${opts.actions}</div>` : ""}
+    </div></div>`;
+  const ov = $("#modal-overlay"), sheet = $(".bs", ov), drag = $(".bs-drag", ov);
+  ov._sticky = !!opts.sticky;
+  document.body.classList.add("modal-open");
+  const dismiss = () => {
+    if (!$("#modal-overlay")) return;
+    sheet.style.transition = "transform .2s ease";
+    sheet.style.transform = "translateY(100%)";
+    ov.style.transition = "opacity .2s ease";
+    ov.style.opacity = "0";
+    setTimeout(() => { if ($("#modal-overlay") === ov) closeModal(); }, 200);
+  };
+  ov._dismiss = dismiss;
+  ov.addEventListener("click", (e) => { if (e.target === ov && !ov._sticky) dismiss(); });
+  $(".bs-close", ov).onclick = dismiss;
+  // 아래로 스와이프해서 닫기
+  let y0 = null, dy = 0;
+  drag.addEventListener("touchstart", (e) => { y0 = e.touches[0].clientY; dy = 0; sheet.style.transition = "none"; }, { passive: true });
+  drag.addEventListener("touchmove", (e) => {
+    if (y0 == null) return;
+    dy = Math.max(0, e.touches[0].clientY - y0);
+    sheet.style.transform = `translateY(${dy}px)`;
+  }, { passive: true });
+  drag.addEventListener("touchend", () => {
+    if (y0 == null) return;
+    y0 = null;
+    if (dy > 80) dismiss();
+    else { sheet.style.transition = "transform .2s ease"; sheet.style.transform = ""; }
+  });
+  return ov;
+}
+
 /* Esc: 모달 → 드로어 → 보고서 순으로 닫기 (PC·키보드 사용 시) */
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   const ov = $("#modal-overlay");
-  if (ov) { if (!ov._sticky) closeModal(); return; }
+  if (ov) { if (!ov._sticky) (ov._dismiss || closeModal)(); return; }
   if ($("#drawer-overlay")) { closeDrawer(); return; }
   const rp = $("#report-screen.open");
   if (rp) rp.classList.remove("open");
 });
+
+/* 확대 막기: 뷰포트(user-scalable=no) + CSS touch-action으로 더블탭 확대 차단,
+   iOS Safari는 뷰포트 설정을 무시하므로 핀치 제스처를 직접 막음 */
+["gesturestart", "gesturechange", "gestureend"].forEach((t) =>
+  document.addEventListener(t, (e) => e.preventDefault(), { passive: false }));
+document.addEventListener("touchmove", (e) => {
+  if (e.touches.length > 1 || (typeof e.scale === "number" && e.scale !== 1)) e.preventDefault();
+}, { passive: false });
 
 function download(filename, text, mime) {
   const blob = new Blob([text], { type: mime || "application/octet-stream" });
@@ -168,7 +221,14 @@ function switchTab(name) {
 }
 
 /* ---------- header clock ---------- */
+let lastTickMin = "";
 function tickClock() {
+  const p = vegasParts();
+  const m = p.hour + ":" + p.minute;
+  if (m !== lastTickMin) {
+    lastTickMin = m;
+    if (currentTab === "home" && $("#home-upcoming") && Store.state) { $("#home-upcoming").innerHTML = Planner.upcomingHTML(); Planner.bindUpcoming(); }
+  }
   const v = $("#clock-vegas"), k = $("#clock-kst");
   if (v) v.textContent = `라스베가스 ${fmtDateTime(vegasParts())}`;
   if (k) k.textContent = `한국 ${fmtDateTime(tzParts("Asia/Seoul"))}`;
@@ -473,8 +533,8 @@ Views.home = function () {
   const st = S();
   const nick = st.profile.nickname ? esc(st.profile.nickname) + "님" : "게스트님";
   const dd = dday();
-  const ddText = dd > 0 ? `D-${dd}` : dd === 0 ? "D-Day" : `D+${-dd}`;
-  const ph = phase();
+  // 행사 기간(11/30–12/4)에는 'DAY n'으로
+  const ddText = dd > 0 ? `D-${dd}` : -dd <= 4 ? `DAY ${1 - dd}` : `D+${-dd}`;
 
   // todo: trip unset?
   const tripTodos = [];
@@ -491,7 +551,6 @@ Views.home = function () {
   if (clDone < cl.length) todos.push({ text: `준비물 ${clDone}/${cl.length} 완료`, tab: "prep" });
 
   const pending = sessionsPending();
-  const upcoming = ph === "during" ? Planner.todayItems() : [];
 
   $("#view-home").innerHTML = `
     <div class="card" style="background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;">
@@ -506,7 +565,7 @@ Views.home = function () {
     </div>
     ${pending ? `<div class="notice">📡 세션 카탈로그 수집 대기 중 — 공식 카탈로그에서 수집하면 세션 탭이 활성화됩니다.</div>` : ""}
 
-    ${ph === "during" && upcoming.length ? `<div class="card"><h3>오늘의 일정</h3>${upcoming.slice(0, 4).map(Planner.itemHTML).join("")}<button class="btn ghost block small" data-go="planner">전체 일정 보기</button></div>` : ""}
+    <div id="home-upcoming">${Planner.upcomingHTML()}</div>
     <div class="card"><h3>할 일</h3>
       ${todos.length ? todos.map((t) => `<div class="todo-item" data-go="${t.tab}" role="button" tabindex="0">
         <span class="dot"></span><span class="txt">${esc(t.text)}</span><span class="chev">›</span></div>`).join("") : `<p class="muted">할 일이 없어요. 완벽해요 ✨</p>`}
@@ -515,11 +574,7 @@ Views.home = function () {
       <div class="muted" style="font-size:13px;">키노트 일정 · 셔틀 세부 노선 · Expo 공식 시간 — 공식 발표 시 앱에 반영됩니다.</div>
     </div>`;
   $$("#view-home [data-go]").forEach((el) => el.onclick = () => switchTab(el.dataset.go));
-  $$("#view-home [data-pitem]").forEach((el) => el.onclick = () => {
-    const day = vegasDateStr();
-    switchTab("planner");
-    Planner.openItem(el.dataset.pitem, day);
-  });
+  Planner.bindUpcoming();
   Weather.refresh();
 };
 
