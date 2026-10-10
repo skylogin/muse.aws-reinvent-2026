@@ -176,7 +176,8 @@ const Sessions = {
         ${s.venue ? `<br>📍 ${esc(s.venue)}${room ? " · " + esc(room) : ""}` : ""}
         ${s.speakers && s.speakers.length ? `<br>🎙️ ${esc(s.speakers.join(", "))}` : ""}
       </div>
-      ${s.abstract ? `<p style="font-size:14px;">${esc(s.abstract)}</p>` : ""}
+      ${s.abstract_ko ? `<div class="abs-summary"><b>요약:</b> ${esc(s.abstract_ko)}</div>` : ""}
+      ${s.abstract ? `<p class="abs-text clamped" id="d-abstract">${esc(s.abstract)}</p>` : ""}
       ${(s.topics || []).length || (s.services || []).length ? `<div class="chip-row" id="d-topics">${(s.topics || []).map((t) => `<button class="chip" data-topic="${esc(t)}" title="이 토픽으로 필터">#${esc(t)}</button>`).join("")}${(s.services || []).map((t) => `<button class="chip svc" data-service="${esc(t)}" title="이 서비스로 필터">${esc(shortService(t))}</button>`).join("")}</div>` : ""}
       ${reps.length ? `<h3 class="sg-head">🔁 다른 회차 ${reps.length}개</h3>
       <p class="muted" style="font-size:12px;margin:0 0 2px;">같은 내용의 세션이 다른 날·장소에서도 열려요. 만석이면 다른 회차를 노려 보세요.</p>
@@ -205,6 +206,8 @@ const Sessions = {
       toast(`'${key === "service" ? shortService(v) : v}'(으)로 필터했어요`);
     });
     $$("#d-reps [data-sg-open]").forEach((el) => el.onclick = () => { closeModal(); this.openDetail(el.dataset.sgOpen); });
+    const absEl = $("#d-abstract");
+    if (absEl) absEl.onclick = () => absEl.classList.toggle("clamped");
   },
 
 };
