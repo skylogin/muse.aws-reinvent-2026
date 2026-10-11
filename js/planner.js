@@ -76,10 +76,12 @@ const Planner = {
     return h ? `${h}시간${m ? ` ${m}분` : ""}` : `${m}분`;
   },
   itemId(it) { return it.session_id || it.id; },
-  /* 시간 있는 일정만 [{it, s, e}] (시작 → 긴 일정 순) */
+  /* 시간 있는 일정만 [{it, s, e}] (시작 → 긴 일정 순)
+     종일 고정 이벤트(allday)는 제외 — 상단에 따로 고정 표시하고 동선 계산에서도 뺌 */
   timedFor(date) {
     const out = [];
     this.itemsFor(date).forEach((it) => {
+      if (it.kind === "fixed" && it.allday) return;
       const s = this.toMin(it.start || it.start_time);
       if (s == null) return;
       let e = this.toMin(it.end || it.end_time);
@@ -87,6 +89,10 @@ const Planner = {
       out.push({ it, s, e });
     });
     return out.sort((a, b) => a.s - b.s || b.e - a.e);
+  },
+  /* 종일 고정 이벤트 (시간표 상단 고정용) */
+  alldayFor(date) {
+    return this.itemsFor(date).filter((it) => it.kind === "fixed" && it.allday);
   },
 
   /* ---- travel ---- */
@@ -759,6 +765,7 @@ Views.planner = function () {
   if (!DAYS.includes(plannerDay)) plannerDay = "2026-11-30";
   const el = $("#view-planner");
   const route = Planner.routeHTML(plannerDay);
+  const allday = Planner.alldayFor(plannerDay);
   el.innerHTML = `
     <div class="day-tabs">${DAYS.map((d) => {
       const w = Weather.iconFor(d);
@@ -770,6 +777,11 @@ Views.planner = function () {
       <button class="peer-chip add" id="pl-share">👥 ${Share.peers().length ? "공유·받기" : "동료와 일정 공유"}</button>
       ${Share.peers().length ? `<button class="peer-chip add" id="pl-peers">관리</button>` : ""}
     </div>
+    ${allday.length ? `<div id="pl-allday">${allday.map((it) => `
+      <button class="allday-chip" data-pitem="${esc(Planner.itemId(it))}" role="button">
+        <span class="pin">📌</span>
+        <span class="tx"><b>${esc(it.title)}</b><span class="muted">${esc([it.venue, it.note].filter(Boolean).join(" · "))}</span></span>
+      </button>`).join("")}</div>` : ""}
     <div id="pl-timeline">${Planner.renderTimetable(plannerDay)}</div>
     <div class="card"><h3>🧭 ${dayLabel(plannerDay)} 동선</h3>
       ${route || `<p class="muted">이 날은 이동할 일정이 없어요.</p>`}
