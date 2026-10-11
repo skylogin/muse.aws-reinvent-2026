@@ -521,9 +521,10 @@ const Planner = {
           <span>🕘</span><span><b>${it.date ? esc(dayLabel(it.date)) + " " : ""}${esc(it.start_time || "")}${it.end_time ? "–" + esc(it.end_time) : ""}</b> <span class="muted">현지</span></span>
           ${kst ? `<span>🇰🇷</span><span>${kst} <span class="muted">한국</span></span>` : ""}
           ${it.venue ? `<span>📍</span><span>${esc(it.venue)}${room ? `<span class="muted"> · ${esc(room)}</span>` : ""}</span>` : ""}
-          <span>🏷️</span><span>${[it.code, it.session_type, it.level ? "Lv." + it.level : ""].filter(Boolean).map((t) => `<span class="badge">${esc(t)}</span>`).join("")}</span>
+          <span>🏷️</span><span>${[it.code, typeKo(it.session_type), it.level ? "Lv." + it.level : ""].filter(Boolean).map((t) => `<span class="badge">${esc(t)}</span>`).join("")}</span>
           ${withP.length ? `<span>👥</span><span>${withP.map((p) => `${Share.dotHTML(p)} ${esc(p.name)}`).join(", ")}님도 담았어요</span>` : ""}
         </div>
+        ${Sessions.summaryHTML(it, true)}
         <label class="field">예약 상태</label>
         <div class="seg" id="pi-res">
           ${["reserved", "waitlist", "none"].map((v) => `<button class="seg-btn res-${v}${res === v ? " on" : ""}" data-v="${v}">${RES_LABEL[v]}</button>`).join("")}
@@ -534,7 +535,7 @@ const Planner = {
         <textarea id="pi-memo" rows="3" placeholder="배운 점, 후속 액션 등">${esc(n.memo)}</textarea>
         ${walkUp}${repHTML}${altHTML}
         <div class="sheet-links">
-          <button class="link-btn" id="pi-detail">세션 소개 보기</button>
+          <button class="link-btn" id="pi-detail">세션 소개 전체 보기</button>
           ${venueCo ? `<a class="link-btn" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${venueCo.lat},${venueCo.lng}">지도에서 보기</a>` : ""}
           <button class="link-btn danger" id="pi-unfav">일정에서 빼기</button>
         </div>`,
@@ -560,6 +561,7 @@ const Planner = {
     };
     $("#pi-detail").onclick = () => { closeModal(); Sessions.openDetail(id); };
     Suggest.bind($(".bs-body"), { baseId: id, swap: true, onDone: () => Views.planner() });
+    Sessions.bindSummary($(".bs-body"));
     $("#pi-unfav").onclick = () => {
       const st = S();
       Object.keys(st.daily_plan).forEach((d) => { st.daily_plan[d] = (st.daily_plan[d] || []).filter((x) => x.session_id !== id); });
