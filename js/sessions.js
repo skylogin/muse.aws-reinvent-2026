@@ -217,7 +217,7 @@ const Sessions = {
     const spk = (s.speakers || []).map((x) => { const p = String(x).split(" · "); return { name: p[0], role: p.slice(1).join(" · ") }; });
     const initials = (n) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
     const catalog = s.catalog_url || APP_DATA.catalog_url;
-    openSheet({
+    const sheetOv = openSheet({
       title: "세션 소개",
       body: `
         <div class="sd-badges">
@@ -244,6 +244,9 @@ const Sessions = {
         ${reps.length ? `<h3 class="sg-head">📅 다른 회차 ${reps.length}개</h3>
         <p class="muted" style="font-size:12px;margin:0 0 2px;">같은 내용이 다른 날·장소에서도 열려요. 만석이면 다른 회차를 노려 보세요.</p>
         <div id="d-reps">${reps.map((c) => Suggest.repeatRowHTML(c)).join("")}</div>` : ""}
+        <h3 class="sg-head">📝 내 노트</h3>
+        <div class="stars" id="d-stars">${[1, 2, 3, 4, 5].map((i) => `<span data-s="${i}">★</span>`).join("")}</div>
+        <textarea id="d-memo" rows="3" placeholder="배운 점, 후속 액션 등"></textarea>
         <div class="sheet-links" style="margin-top:12px;">
           ${catalog ? `<a class="link-btn" href="${esc(catalog)}" target="_blank" rel="noopener">공식 카탈로그 ›</a>` : ""}
           <a class="link-btn" href="https://registration.awsevents.com/" target="_blank" rel="noopener">AWS Events에서 예약 ›</a>
@@ -274,7 +277,30 @@ const Sessions = {
       this.toggleFav(id);
       paint();
     };
-    $("#d-close").onclick = () => $("#modal-overlay")._dismiss();
+    // 내 노트 (별점+메모) — planner와 같은 session_notes 저장소
+    const sn = S().session_notes[id] || { rating: 0, memo: "" };
+    let dRating = sn.rating || 0;
+    const dPaintStars = () => {
+      $$("#d-stars span").forEach((x) => x.classList.toggle("on", Number(x.dataset.s) <= dRating));
+    };
+    dPaintStars();
+    $$("#d-stars span").forEach((sp) => {
+      sp.addEventListener("click", (e) => { e.preventDefault(); dRating = Number(sp.dataset.s) === dRating ? 0 : Number(sp.dataset.s); dPaintStars(); });
+    });
+    $("#d-memo").value = sn.memo || "";
+    const dSaveNote = () => {
+      const memo = $("#d-memo").value.trim();
+      if (dRating || memo) S().session_notes[id] = { rating: dRating, memo, updated_at: new Date().toISOString() };
+      else delete S().session_notes[id];
+      Store.save();
+    };
+    $("#d-memo").addEventListener("change", dSaveNote);
+    $("#d-close").onclick = () => { dSaveNote(); $("#modal-overlay")._dismiss(); };
+    // 배경 탭·스와이프로 닫을 때도 노트 저장
+    if (sheetOv && sheetOv._dismiss) {
+      const _d = sheetOv._dismiss;
+      sheetOv._dismiss = () => { dSaveNote(); _d(); };
+    }
     this.bindSummary($(".bs-body"));
     $$("#d-topics [data-topic], #d-topics [data-service]").forEach((c) => c.onclick = () => {
       closeModal();
@@ -323,6 +349,7 @@ Sessions.renderResults = function () {
       <div class="ss-bar">
         <span class="muted">${list.length.toLocaleString("ko-KR")}개 세션${activeFilterCount ? ` · 필터 ${activeFilterCount}개` : ""}</span>
         <span class="ss-bar-r">
+          <button class="chip" id="ss-notes">📝 내 노트</button>
           <button class="chip" id="ss-news">📣 발표 노트</button>
           <button class="chip${Sessions.venueGroup ? " on" : ""}" id="ss-venue-group" aria-pressed="${Sessions.venueGroup}">📍 베뉴별</button>
         </span>
@@ -340,6 +367,8 @@ Sessions.renderResults = function () {
   if (moreBtn) moreBtn.onclick = () => { Sessions.limit += SESSION_PAGE; Sessions.renderResults(); };
   const nw = $("#ss-news");
   if (nw) nw.onclick = () => News.open();
+  const snt = $("#ss-notes");
+  if (snt) snt.onclick = () => SessionNotes.open();
   const vg = $("#ss-venue-group");
   if (vg) vg.onclick = () => { Sessions.venueGroup = !Sessions.venueGroup; Sessions.renderResults(); };
   const clr = $("#ss-clear-f");
@@ -424,6 +453,60 @@ function bindSessionChrome() {
   q.addEventListener("input", () => { clearTimeout(t); t = setTimeout(run, 250); });
   q.addEventListener("keydown", (e) => { if (e.key === "Enter") { run(); q.blur(); } });
 }
+
+/* 📝 세션 노트 모아보기: 별점·메모를 남긴 세션 목록 + 텍스트 내보내기 */
+const SessionNotes = {
+  items() {
+    const notes = S().session_notes || {};
+    return Object.keys(notes)
+      .filter((id) => notes[id] && (notes[id].rating || notes[id].memo))
+      .map((id) => ({ id, ...notes[id], s: allSessions().find((x) => x.session_id === id) }))
+      .sort((a, b) => String((a.s || {}).date || "") + String((a.s || {}).start_time || "") > String((b.s || {}).date || "") + String((b.s || {}).start_time || "") ? 1 : -1);
+  },
+  stars(r) { return r ? "★".repeat(r) + "☆".repeat(5 - r) : "☆☆☆☆☆"; },
+  open() {
+    const render = () => {
+      const list = this.items();
+      if (!list.length) return `<p class="muted">아직 남긴 노트가 없어요. 세션 상세에서 별점과 메모를 남겨 보세요.</p>`;
+      return list.map((x) => `
+        <div class="sg-row" data-note-open="${esc(x.id)}" role="button" tabindex="0">
+          <div class="sg-main"><b>${esc((x.s || {}).title || x.id)}</b>
+            <span class="muted">${x.s && x.s.date ? esc(dayLabel(x.s.date)) + " " + esc(x.s.start_time || "") : ""}${x.s && x.s.venue ? " · " + esc(x.s.venue) : ""}</span>
+            ${x.memo ? `<span style="display:block;font-size:13px;margin-top:2px;">${esc(x.memo.length > 80 ? x.memo.slice(0, 80) + "…" : x.memo)}</span>` : ""}
+          </div>
+          <div class="sg-act"><span style="color:var(--accent);font-size:14px;white-space:nowrap;">${this.stars(x.rating)}</span></div>
+        </div>`).join("");
+    };
+    openSheet({
+      title: "📝 내 세션 노트",
+      body: `<div id="sn-list">${render()}</div>`,
+      actions: `<button class="btn ghost" id="sn-close">닫기</button><button class="btn" id="sn-export">📄 텍스트로 내보내기</button>`
+    });
+    const bind = () => {
+      $$("#sn-list [data-note-open]").forEach((el) => {
+        el.onclick = () => { closeModal(); Sessions.openDetail(el.dataset.noteOpen); };
+      });
+    };
+    bind();
+    $("#sn-close").onclick = () => $("#modal-overlay")._dismiss();
+    $("#sn-export").onclick = () => this.exportTxt();
+  },
+  exportTxt() {
+    const list = this.items();
+    if (!list.length) { toast("내보낼 노트가 없어요"); return; }
+    const lines = ["re:Invent 2026 세션 노트", "=".repeat(28), ""];
+    list.forEach((x) => {
+      const s = x.s || {};
+      lines.push(`■ ${s.title || x.id}`);
+      if (s.date || s.start_time) lines.push(`  ${s.date ? dayLabel(s.date) : ""} ${s.start_time || ""}${s.end_time ? "–" + s.end_time : ""}${s.venue ? " · " + s.venue : ""}`);
+      if (x.rating) lines.push(`  별점: ${"★".repeat(x.rating)}${"☆".repeat(5 - x.rating)}`);
+      if (x.memo) lines.push(`  메모: ${x.memo}`);
+      lines.push("");
+    });
+    download("reinvent2026-session-notes.txt", lines.join("\n"), "text/plain;charset=utf-8");
+    toast("노트를 저장했어요 📄");
+  }
+};
 
 /* 📣 신규 발표 노트: 키노트·발표 내용을 적어 두면 관련 세션을 찾아 줌
    데이터: event_info.announcements = [{ date, title, q }] (q: 검색어, 쉼표로 여러 개) + 내가 적은 메모 */
