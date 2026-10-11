@@ -213,8 +213,9 @@ const Share = {
           <span>🕘</span><span><b>${esc(dayLabel(s.date))} ${esc(s.start_time || "")}–${esc(s.end_time || "")}</b> <span class="muted">현지</span></span>
           ${kst ? `<span>🇰🇷</span><span>${kst} <span class="muted">한국</span></span>` : ""}
           <span>📍</span><span>${esc(s.venue || "")}${room ? `<span class="muted"> · ${esc(room)}</span>` : ""}</span>
-          <span>🏷️</span><span>${[s.code, s.session_type, s.level ? "Lv." + s.level : ""].filter(Boolean).map((t) => `<span class="badge">${esc(t)}</span>`).join("")}</span>
+          <span>🏷️</span><span>${[s.code, typeKo(s.session_type), s.level ? "Lv." + s.level : ""].filter(Boolean).map((t) => `<span class="badge">${esc(t)}</span>`).join("")}</span>
         </div>
+        ${Sessions.summaryHTML(s, true)}
         ${mine ? `<div class="notice">✅ 나도 이 세션을 담았어요 — 같이 들어요!</div>` : ""}
         <div class="sheet-links">
           <button class="link-btn" id="pp-detail">세션 소개 보기</button>
@@ -225,6 +226,7 @@ const Share = {
     });
     $("#pp-close").onclick = () => $("#modal-overlay")._dismiss();
     $("#pp-detail").onclick = () => { closeModal(); Sessions.openDetail(id); };
+    Sessions.bindSummary($(".bs-body"));
     $("#pp-hide").onclick = () => { p.visible = false; Store.save(); closeModal(); Views.planner(); toast(`${p.name}님 일정을 숨겼어요`); };
     const add = $("#pp-add");
     if (add) add.onclick = () => { closeModal(); Sessions.toggleFav(id); };

@@ -26,7 +26,22 @@ function openModal(html, opts) {
   document.body.classList.add("modal-open");
   return ov;
 }
-function closeModal() { $("#modal-root").innerHTML = ""; document.body.classList.remove("modal-open"); }
+function closeModal() { closeLayer(); $("#modal-root").innerHTML = ""; document.body.classList.remove("modal-open"); }
+
+/* 레이어 팝업: 시트 위에 겹쳐 뜨는 작은 창 (닫으면 아래 시트로 돌아감) */
+function openLayer(o) {
+  closeLayer();
+  const el = document.createElement("div");
+  el.id = "layer-overlay";
+  el.className = "overlay center layer";
+  el.innerHTML = `<div class="sheet layer-card" role="dialog" aria-modal="true" aria-label="${esc(o.title || "")}">
+    <div class="layer-head"><h2>${esc(o.title || "")}</h2><button class="bs-close" type="button" aria-label="닫기">✕</button></div>
+    <div class="layer-body">${o.body || ""}</div></div>`;
+  document.body.appendChild(el);
+  el.addEventListener("click", (e) => { if (e.target === el) closeLayer(); });
+  $(".bs-close", el).onclick = closeLayer;
+}
+function closeLayer() { const el = $("#layer-overlay"); if (el) el.remove(); }
 
 /* 하단 시트 (bottom sheet): 손잡이 + 제목/닫기 + 스크롤 본문 + 하단 고정 버튼
    opts: { title, body, actions, sticky } — 손잡이·제목줄을 아래로 끌면 닫힘 */
@@ -76,6 +91,7 @@ function openSheet(opts) {
 /* Esc: 모달 → 드로어 → 보고서 순으로 닫기 (PC·키보드 사용 시) */
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
+  if ($("#layer-overlay")) { closeLayer(); return; }
   const ov = $("#modal-overlay");
   if (ov) { if (!ov._sticky) (ov._dismiss || closeModal)(); return; }
   if ($("#drawer-overlay")) { closeDrawer(); return; }

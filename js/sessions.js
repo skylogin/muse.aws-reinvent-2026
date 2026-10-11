@@ -4,6 +4,27 @@
 const SESSION_PAGE = 100; // 한 번에 그리는 카드 수 ('더 보기'로 늘림)
 const RES_LABEL = { reserved: "예약됨", waitlist: "대기", none: "미예약" };
 
+/* 세션 타입·난이도·형식 한국어 표기 */
+const TYPE_KO = { breakout: "브레이크아웃", workshop: "워크숍", "chalk-talk": "초크토크", "builders-session": "빌더 세션",
+  "code-talk": "코드토크", "lightning-talk": "라이트닝 토크", "hands-on-lab": "핸즈온 랩", "game-day": "게임데이",
+  bootcamp: "부트캠프", "exam-prep": "시험 대비", keynote: "키노트" };
+const TYPE_TIP = {
+  workshop: "💻 노트북 지참 · 강사와 함께 직접 따라 하는 실습",
+  bootcamp: "💻 노트북 지참 · 긴 시간 진행되는 심화 실습",
+  "builders-session": "💻 노트북 지참 · 소규모 그룹 실습",
+  "hands-on-lab": "💻 노트북 지참 · 실습 랩",
+  "game-day": "💻 노트북 지참 · 팀을 이뤄 푸는 실전 게임",
+  "chalk-talk": "🗣️ 화이트보드 중심 소규모 토론 · 질문 환영",
+  "code-talk": "⌨️ 라이브 코딩을 보며 진행",
+  breakout: "🎤 발표 세션",
+  "lightning-talk": "⚡ 짧은 발표",
+  "exam-prep": "📝 AWS 자격증 시험 대비"
+};
+const LEVEL_KO = { 100: "입문", 200: "중급", 300: "고급", 400: "전문가" };
+const FORMAT_KO = { lecture: "강의", "hands-on": "실습", discussion: "토론", lab: "랩" };
+const LANG_KO = { en: "영어", ko: "한국어", ja: "일본어", zh: "중국어", es: "스페인어", fr: "프랑스어", de: "독일어", pt: "포르투갈어" };
+const typeKo = (t) => TYPE_KO[t] || t || "";
+
 /* "Amazon Elastic Compute Cloud (Amazon EC2)" → "Amazon EC2" */
 function shortService(name) {
   const m = String(name || "").match(/\(([^)]+)\)\s*$/);
@@ -48,7 +69,7 @@ const Sessions = {
       if (f.format && s.session_format !== f.format) return false;
       if (f.delivery && s.delivery !== f.delivery) return false;
       if (q) {
-        const hay = `${s.title} ${(s.abstract || "")} ${(s.speakers || []).join(" ")} ${s.code} ${(s.services || []).join(" ")}`.toLowerCase();
+        const hay = `${s.title} ${s.abstract_ko || ""} ${s.abstract || ""} ${(s.speakers || []).join(" ")} ${s.code} ${(s.services || []).join(" ")} ${typeKo(s.session_type)}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -125,7 +146,8 @@ const Sessions = {
     return `<div class="card session-card" data-id="${esc(s.session_id)}">
       <button class="fav-btn ${fav ? "on" : ""}" data-fav="${esc(s.session_id)}" aria-label="${fav ? "관심 해제" : "관심 세션에 담기"}" aria-pressed="${fav}">${fav ? "⭐" : "☆"}</button>
       <strong>${esc(s.title)}</strong>
-      <div class="meta">${esc(s.code || "")} · ${s.date ? esc(dayLabel(s.date)) : ""} ${esc(s.start_time || "")}${s.end_time ? "–" + esc(s.end_time) : ""}${s.level ? ` · Lv.${esc(s.level)}` : ""}<br>📍 ${esc(s.venue || "")}${room ? " · " + esc(room) : ""}</div>
+      ${s.abstract_ko ? `<div class="sum">${esc(s.abstract_ko)}</div>` : ""}
+      <div class="meta"><span class="t-type">${esc(typeKo(s.session_type))}</span>${s.date ? esc(dayLabel(s.date)) : ""} ${esc(s.start_time || "")}${s.end_time ? "–" + esc(s.end_time) : ""}${s.level ? ` · Lv.${esc(s.level)}` : ""} · ${esc(s.code || "")}<br>📍 ${esc(s.venue || "")}${room ? " · " + esc(room) : ""}</div>
       ${res === "reserved" ? `<div style="margin-top:6px;"><span class="badge ok">예약됨</span></div>` : res === "waitlist" ? `<div style="margin-top:6px;"><span class="badge warn">대기</span></div>` : ""}
     </div>`;
   },
@@ -151,52 +173,109 @@ const Sessions = {
     toast(status === "reserved" ? "예약됨으로 표시했어요" : status === "waitlist" ? "대기로 표시했어요" : "미예약으로 표시했어요");
   },
 
+  /* 요약(한국어) 블록 — 영어 원문은 버튼으로 따로 */
+  summaryHTML(s, compact) {
+    if (!s.abstract_ko && !s.abstract) return "";
+    const ko = s.abstract_ko;
+    return `<div class="sd-summary${compact ? " compact" : ""}">
+      <div class="sd-sum-head"><span>📝 ${compact ? "요약" : "이런 세션이에요"}</span>
+        ${s.abstract ? `<button class="link-btn" data-orig="${esc(s.session_id)}">영어 원문 ›</button>` : ""}</div>
+      <p class="${[ko ? "" : "en-clamp", compact ? "clamp3" : ""].filter(Boolean).join(" ")}"${ko ? "" : ` lang="en"`}>${esc(ko || s.abstract)}</p>
+    </div>`;
+  },
+  /* 영어 원문: 시트 위에 겹쳐 뜨는 레이어 */
+  openOriginal(id) {
+    const s = this.all().find((x) => x.session_id === id);
+    if (!s || !s.abstract) return;
+    const gt = "https://translate.google.com/?sl=en&tl=ko&op=translate&text=" + encodeURIComponent(s.abstract);
+    openLayer({
+      title: "🌐 영어 원문",
+      body: `<p class="sd-en-title" lang="en">${esc(s.title)}</p>
+        <p class="sd-en" lang="en">${esc(s.abstract)}</p>
+        ${s.abstract_ko ? `<p class="muted" style="font-size:12px;">앱의 한국어 요약은 원문의 앞부분을 옮긴 거예요.</p>` : ""}
+        <a class="btn ghost block" href="${gt}" target="_blank" rel="noopener">구글 번역으로 전체 보기</a>`
+    });
+  },
+  bindSummary(root) {
+    $$("[data-orig]", root).forEach((b) => b.onclick = () => this.openOriginal(b.dataset.orig));
+    // 짧게 접힌 요약은 눌러서 펼치기
+    $$(".sd-summary p.clamp3", root).forEach((p) => p.onclick = () => p.classList.toggle("open"));
+  },
+
+  /* 세션 상세: 하단 시트 — 핵심 정보 카드 → 한국어 요약 → 연사·태그·다른 회차 */
   openDetail(id) {
     const s = this.all().find((x) => x.session_id === id);
     if (!s) return;
-    const fav = S().favorites.includes(id);
-    const res = (S().reservations[id] || {}).status || "none";
     const room = roomLabel(s);
     const reps = Suggest.repeats(id);
-    const fmtMap = { lecture: "이론", "hands-on": "실습", lab: "랩", discussion: "토론형" };
-    const delMap = { "in-person": "현장만", livestream: "라이브스트림", recorded: "다시보기" };
-    openModal(`
-      <button class="fav-btn ${fav ? "on" : ""}" id="d-fav" style="font-size:24px;" aria-label="${fav ? "관심 해제" : "관심 세션에 담기"}" aria-pressed="${fav}">${fav ? "⭐" : "☆"}</button>
-      <h2 style="padding-right:40px;">${esc(s.title)}</h2>
-      <div style="margin:6px 0;">
-        <span class="badge">${esc(s.code || "")}</span>
-        <span class="badge info">${esc(s.session_type || "")}</span>
-        ${s.level ? `<span class="badge">Lv.${esc(s.level)}</span>` : ""}
-        ${s.session_format ? `<span class="badge">${esc(fmtMap[s.session_format] || s.session_format)}</span>` : ""}
-        ${s.delivery ? `<span class="badge">${esc(delMap[s.delivery] || s.delivery)}</span>` : ""}
-      </div>
-      <div class="muted" style="font-size:13px;margin-bottom:8px;">
-        ${s.date ? esc(dayLabel(s.date)) + " " : ""}${esc(s.start_time || "")}${s.end_time ? "–" + esc(s.end_time) : ""} (현지)
-        ${kstRange(s.date, s.start_time, s.end_time) ? `<br>🇰🇷 한국 ${kstRange(s.date, s.start_time, s.end_time)}` : ""}
-        ${s.venue ? `<br>📍 ${esc(s.venue)}${room ? " · " + esc(room) : ""}` : ""}
-        ${s.speakers && s.speakers.length ? `<br>🎙️ ${esc(s.speakers.join(", "))}` : ""}
-      </div>
-      ${s.abstract_ko ? `<div class="abs-summary"><b>요약:</b> ${esc(s.abstract_ko)}</div>` : ""}
-      ${s.abstract ? `<p class="abs-text clamped" id="d-abstract">${esc(s.abstract)}</p>` : ""}
-      ${(s.topics || []).length || (s.services || []).length ? `<div class="chip-row" id="d-topics">${(s.topics || []).map((t) => `<button class="chip" data-topic="${esc(t)}" title="이 토픽으로 필터">#${esc(t)}</button>`).join("")}${(s.services || []).map((t) => `<button class="chip svc" data-service="${esc(t)}" title="이 서비스로 필터">${esc(shortService(t))}</button>`).join("")}</div>` : ""}
-      ${reps.length ? `<h3 class="sg-head">🔁 다른 회차 ${reps.length}개</h3>
-      <p class="muted" style="font-size:12px;margin:0 0 2px;">같은 내용의 세션이 다른 날·장소에서도 열려요. 만석이면 다른 회차를 노려 보세요.</p>
-      <div id="d-reps">${reps.map((c) => Suggest.repeatRowHTML(c)).join("")}</div>` : ""}
-      ${fav ? `<label class="field" style="display:block;margin-top:10px;">예약 상태</label>
-      <div class="chip-row" id="d-res">${["reserved", "waitlist", "none"].map((v) => `<button class="chip${res === v ? " on" : ""}" data-v="${v}">${RES_LABEL[v]}</button>`).join("")}</div>` : ""}
-      ${s.prerequisites ? `<div class="kv"><span>사전 준비물</span><b>${esc(s.prerequisites)}</b></div>` : ""}
-      ${s.swag ? `<div class="kv"><span>🎁 기념품</span><b>${esc(s.swag)}</b></div>` : ""}
-      ${s.language ? `<div class="kv"><span>언어</span><b>${esc(s.language)}${s.caption_translation ? " · " + esc(s.caption_translation) : ""}</b></div>` : ""}
-      ${((s.catalog_url || APP_DATA.catalog_url)) ? `<a class="btn ghost block" href="${esc(s.catalog_url || APP_DATA.catalog_url)}" target="_blank" rel="noopener">공식 카탈로그에서 상세 보기</a>` : ""}
-      <a class="btn accent block" href="https://registration.awsevents.com/" target="_blank" rel="noopener">AWS Events 앱에서 예약하기</a>
-      <button class="btn ghost block" id="d-close">닫기</button>`);
-    $("#d-fav").onclick = (e) => { e.stopPropagation(); closeModal(); this.toggleFav(id); };
-    $("#d-close").onclick = closeModal;
-    $$("#d-res .chip").forEach((c) => c.onclick = () => {
-      $$("#d-res .chip").forEach((x) => x.classList.toggle("on", x === c));
-      this.setReservation(id, c.dataset.v);
-      this.renderResults();
+    const kst = kstRange(s.date, s.start_time, s.end_time);
+    const s0 = Planner.toMin(s.start_time), e0 = Planner.toMin(s.end_time);
+    const len = s0 != null && e0 > s0 ? Planner.dur(e0 - s0) : "";
+    const lvl = s.level ? `Lv.${s.level}${LEVEL_KO[s.level] ? " " + LEVEL_KO[s.level] : ""}` : "";
+    const fmt = FORMAT_KO[s.session_format] || "";
+    const lang = s.language ? (LANG_KO[s.language] || s.language) + " 진행" : "";
+    const spk = (s.speakers || []).map((x) => { const p = String(x).split(" · "); return { name: p[0], role: p.slice(1).join(" · ") }; });
+    const initials = (n) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+    const catalog = s.catalog_url || APP_DATA.catalog_url;
+    openSheet({
+      title: "세션 소개",
+      body: `
+        <div class="sd-badges">
+          <span class="badge info">${esc(typeKo(s.session_type))}</span>
+          ${lvl ? `<span class="badge">${esc(lvl)}</span>` : ""}
+          <span class="badge">${esc(s.code || "")}</span>
+        </div>
+        <h3 class="bs-title sd-title">${esc(s.title)}</h3>
+        <div class="sd-facts">
+          <div class="sd-fact"><span class="k">🗓️ ${s.date ? esc(dayLabel(s.date)) : "일시"}</span><b>${esc(s.start_time || "")}${s.end_time ? "–" + esc(s.end_time) : ""}</b>${kst ? `<small>🇰🇷 한국 ${kst}</small>` : ""}</div>
+          <div class="sd-fact"><span class="k">📍 장소</span><b>${esc(s.venue || "미정")}</b>${room ? `<small>${esc(room)}</small>` : ""}</div>
+          <div class="sd-fact"><span class="k">🎯 형식</span><b>${esc([typeKo(s.session_type), fmt].filter(Boolean).join(" · "))}</b>${lvl ? `<small>${esc(lvl)}</small>` : ""}</div>
+          <div class="sd-fact"><span class="k">⏱️ 길이</span><b>${esc(len || "—")}</b>${lang ? `<small>${esc(lang)}</small>` : ""}</div>
+        </div>
+        ${TYPE_TIP[s.session_type] ? `<div class="sd-tip">${esc(TYPE_TIP[s.session_type])}</div>` : ""}
+        ${this.summaryHTML(s)}
+        <div id="d-res-wrap"></div>
+        ${spk.length ? `<h3 class="sg-head">🎙️ 연사 ${spk.length}명</h3>
+        <div class="sd-spks">${spk.slice(0, 4).map((p) => `<div class="sd-spk"><span class="av">${esc(initials(p.name))}</span>
+          <div><b>${esc(p.name)}</b>${p.role ? `<span class="muted">${esc(p.role)}</span>` : ""}</div></div>`).join("")}
+          ${spk.length > 4 ? `<p class="muted" style="font-size:12px;margin:2px 0 0;">외 ${spk.length - 4}명</p>` : ""}</div>` : ""}
+        ${(s.topics || []).length || (s.services || []).length ? `<h3 class="sg-head">🏷️ 토픽·서비스 <span class="muted" style="font-size:12px;font-weight:400;">눌러서 필터</span></h3>
+        <div class="chip-row" id="d-topics">${(s.topics || []).map((t) => `<button class="chip" data-topic="${esc(t)}">#${esc(t)}</button>`).join("")}${(s.services || []).map((t) => `<button class="chip svc" data-service="${esc(t)}">${esc(shortService(t))}</button>`).join("")}</div>` : ""}
+        ${reps.length ? `<h3 class="sg-head">📅 다른 회차 ${reps.length}개</h3>
+        <p class="muted" style="font-size:12px;margin:0 0 2px;">같은 내용이 다른 날·장소에서도 열려요. 만석이면 다른 회차를 노려 보세요.</p>
+        <div id="d-reps">${reps.map((c) => Suggest.repeatRowHTML(c)).join("")}</div>` : ""}
+        <div class="sheet-links" style="margin-top:12px;">
+          ${catalog ? `<a class="link-btn" href="${esc(catalog)}" target="_blank" rel="noopener">공식 카탈로그 ›</a>` : ""}
+          <a class="link-btn" href="https://registration.awsevents.com/" target="_blank" rel="noopener">AWS Events에서 예약 ›</a>
+        </div>`,
+      actions: `<button class="btn ghost" id="d-close">닫기</button><button class="btn" id="d-fav"></button>`
     });
+    // 담기 버튼과 예약 상태는 관심 여부에 따라 그 자리에서 바뀜
+    const paint = () => {
+      const fav = S().favorites.includes(id);
+      const b = $("#d-fav");
+      if (!b) return;
+      b.textContent = fav ? "⭐ 내 일정에 담김" : "☆ 내 일정에 담기";
+      b.classList.toggle("ghost-on", fav);
+      b.setAttribute("aria-pressed", fav);
+      const res = (S().reservations[id] || {}).status || "none";
+      $("#d-res-wrap").innerHTML = fav ? `<label class="field" style="display:block;margin-top:12px;">예약 상태</label>
+        <div class="seg" id="d-res">${["reserved", "waitlist", "none"].map((v) => `<button class="seg-btn res-${v}${res === v ? " on" : ""}" data-v="${v}">${RES_LABEL[v]}</button>`).join("")}</div>` : "";
+      $$("#d-res .seg-btn").forEach((c) => c.onclick = () => {
+        $$("#d-res .seg-btn").forEach((x) => x.classList.toggle("on", x === c));
+        this.setReservation(id, c.dataset.v);
+        this.renderResults();
+      });
+    };
+    paint();
+    $("#d-fav").onclick = () => {
+      const fav = S().favorites.includes(id);
+      if (!fav && this.findConflict(s)) { closeModal(); this.toggleFav(id); return; } // 시간 겹침 확인 창으로
+      this.toggleFav(id);
+      paint();
+    };
+    $("#d-close").onclick = () => $("#modal-overlay")._dismiss();
+    this.bindSummary($(".bs-body"));
     $$("#d-topics [data-topic], #d-topics [data-service]").forEach((c) => c.onclick = () => {
       closeModal();
       const key = c.dataset.topic ? "topic" : "service", v = c.dataset.topic || c.dataset.service;
@@ -206,8 +285,6 @@ const Sessions = {
       toast(`'${key === "service" ? shortService(v) : v}'(으)로 필터했어요`);
     });
     $$("#d-reps [data-sg-open]").forEach((el) => el.onclick = () => { closeModal(); this.openDetail(el.dataset.sgOpen); });
-    const absEl = $("#d-abstract");
-    if (absEl) absEl.onclick = () => absEl.classList.toggle("clamped");
   },
 
 };
