@@ -537,6 +537,7 @@ table.plain th { color: var(--muted); font-weight: 600; font-size: 12px; }
 /* ---------- 추천 (대체 세션·빈 시간) ---------- */
 .sg-head { font-size: 15px; margin: 18px 0 4px !important; }
 .sg-row { display: flex; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.sg-row.done .sg-main b { color: var(--muted); }
 .sg-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; cursor: pointer; }
 .sg-main b { font-size: 13.5px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .sg-main .muted { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
