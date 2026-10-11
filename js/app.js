@@ -199,7 +199,8 @@ function defaultState() {
     budget_usd: 0,     // 정산 예산 (USD)
     peers: [],         // 받은 동료 일정 [{id, name, days, visible, color, at}]
     show_kr_hours: true, // 시간표에 한국 업무시간 표시
-    news: []           // 신규 발표 메모 [{id, title, q, at}]
+    news: [],           // 신규 발표 메모 [{id, title, q, at}]
+    expo_booths: []     // Expo 부스 스탬프 [{id, name, note, visited, visited_at}]
   };
 }
 const Store = {
@@ -603,6 +604,7 @@ Views.home = function () {
     ${pending ? `<div class="notice">📡 세션 카탈로그 수집 대기 중 — 공식 카탈로그에서 수집하면 세션 탭이 활성화됩니다.</div>` : ""}
 
     <div id="home-upcoming">${Planner.upcomingHTML()}</div>
+    ${Expo.cardHTML()}
     ${(() => {
       const items = News.items();
       if (!items.length && vegasDateStr() < EVENT_START) return "";
@@ -628,6 +630,7 @@ Views.home = function () {
     })()}`;
   $$("#view-home [data-go]").forEach((el) => el.onclick = () => switchTab(el.dataset.go));
   Planner.bindUpcoming();
+  Expo.bindCard();
   const hn = $("#home-news");
   if (hn) hn.onclick = () => News.open();
   $$("#view-home [data-news-q]").forEach((b) => b.onclick = () => News.show(b.dataset.newsQ));
