@@ -28,8 +28,10 @@ Views.settings = function () {
           `<button class="chip${(st.theme || "system") === v ? " on" : ""}" data-theme-v="${v}">${l}</button>`).join("")}
       </div>
       <p class="muted" style="font-size:12px;margin:6px 0 0;">'시스템 설정'은 휴대폰의 라이트/다크 모드를 따라가요.</p>
-      <label class="check-item" style="margin-top:6px;"><input type="checkbox" id="set-kr"${st.show_kr_hours !== false ? " checked" : ""}>
-        <span>시간표에 🇰🇷 한국 업무시간(평일 09–18시) 표시<br><span class="muted" style="font-size:12px;">라스베가스 16시–24시 무렵이 한국 오전·오후예요</span></span></label>
+      <div class="setting-row" style="margin-top:6px;">
+        <span>시간표에 🇰🇷 한국 업무시간(평일 09–18시) 표시<br><span class="muted" style="font-size:12px;">라스베가스 16시–24시 무렵이 한국 오전·오후예요</span></span>
+        <label class="switch"><input type="checkbox" id="set-kr" aria-label="시간표에 한국 업무시간 표시"${st.show_kr_hours !== false ? " checked" : ""}><span class="slider"></span></label>
+      </div>
     </div>
     <div class="card"><h3>🔔 세션 시작 알림</h3>
       <div class="row">
@@ -39,7 +41,7 @@ Views.settings = function () {
       <p class="muted" style="font-size:12px;margin:6px 0 0;">앱이 켜져 있을 때 관심 세션 시작 전에 알려줘요.</p>
     </div>
     <div class="card"><h3>ℹ️ 앱 정보</h3>
-      <div class="kv"><span>버전</span><b>re:Invent 2026 출장 v1</b></div>
+      <div class="kv"><span>버전</span><b>v1</b></div>
       <div class="kv"><span>데이터 보관</span><b>이 기기(localStorage)</b></div>
     </div>`;
 

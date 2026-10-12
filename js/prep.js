@@ -1,4 +1,4 @@
-/* 사전준비 탭: 내 출장 정보 + 가이드 + 준비물 체크리스트 */
+/* 준비·정보 탭: 내 출장 정보 + 가이드 + 준비물 체크리스트 */
 "use strict";
 
 /* 다녀온 사람들 후기 링크 */
@@ -181,21 +181,10 @@ Views.prep = function () {
   const dtasks = DepartTasks.all();
   const dDone = S().depart_done || {};
   const dtDoneCount = dtasks.filter((x) => dDone[x.id]).length;
+  // 11/30(행사 시작)부터는 현지 가이드가 우선 — 출발 준비·준비물은 아래로 내림
+  const tripActive = vegasDateStr() >= EVENT_START;
 
-  el.innerHTML = `
-    <div class="card"><h3>🗓️ 출발 전 할 일 <span class="badge ${dd <= 7 ? "warn" : "info"}">${dd > 0 ? `D-${dd}` : dd === 0 ? "D-Day" : `D+${-dd}`}</span></h3>
-      <div class="progress${dtDoneCount === dtasks.length ? " done" : ""}"><div style="width:${Math.round(dtDoneCount / dtasks.length * 100)}%"></div></div>
-      <div class="muted" style="font-size:12px;margin-bottom:6px;">${dtDoneCount}/${dtasks.length} 완료</div>
-      ${dtasks.map((x) => {
-        const urgent = dd <= x.d;
-        const isDone = !!dDone[x.id];
-        return `<label class="check-item${isDone ? " done" : ""}">
-          <input type="checkbox" data-dt="${x.id}" ${isDone ? "checked" : ""}>
-          <span><span class="badge ${urgent && !isDone ? "warn" : ""}">D-${x.d}</span> ${esc(x.text)}</span>
-        </label>`;
-      }).join("")}
-    </div>
-
+  const tripCard = `
     <div class="card"><h3>✈️ 내 출장 정보</h3>
       <h4 style="margin:8px 0 4px;font-size:14px;">가는 편 (ICN → LAS) ${missing(f.outbound.flight_no)}</h4>
       <div class="kv"><span>편명</span><b>${esc(f.outbound.flight_no) || "-"}</b></div>
@@ -207,8 +196,23 @@ Views.prep = function () {
       <div class="kv"><span>호텔명</span><b>${esc(h.name) || "-"}</b></div>
       <div class="kv"><span>체크인 → 아웃</span><b>${h.check_in ? esc(h.check_in) + " → " + esc(h.check_out) : "-"}</b></div>
       <button class="btn ghost block" id="prep-edit-trip">출장 정보 입력/수정</button>
-    </div>
+    </div>`;
 
+  const departCard = `
+    <div class="card"><h3>🗓️ 출발 전 할 일 <span class="badge ${dd <= 7 ? "warn" : "info"}">${dd > 0 ? `D-${dd}` : dd === 0 ? "D-Day" : `D+${-dd}`}</span></h3>
+      <div class="progress${dtDoneCount === dtasks.length ? " done" : ""}"><div style="width:${Math.round(dtDoneCount / dtasks.length * 100)}%"></div></div>
+      <div class="muted" style="font-size:12px;margin-bottom:6px;">${dtDoneCount}/${dtasks.length} 완료</div>
+      ${dtasks.map((x) => {
+        const urgent = dd <= x.d;
+        const isDone = !!dDone[x.id];
+        return `<label class="check-item${isDone ? " done" : ""}">
+          <input type="checkbox" data-dt="${x.id}" ${isDone ? "checked" : ""}>
+          <span><span class="badge ${urgent && !isDone ? "warn" : ""}">D-${x.d}</span> ${esc(x.text)}</span>
+        </label>`;
+      }).join("")}
+    </div>`;
+
+  const packCard = `
     <div class="card"><h3>🎒 준비물 체크리스트</h3>
       <div class="progress${cl.length && done === cl.length ? " done" : ""}"><div style="width:${cl.length ? Math.round(done / cl.length * 100) : 0}%"></div></div>
       <div class="muted" style="font-size:12px;margin-bottom:6px;">${done}/${cl.length} 완료</div>
@@ -220,13 +224,15 @@ Views.prep = function () {
         </span>
       </div>`).join("")}
       <button class="btn ghost block small" id="ck-add" style="margin-top:8px;">＋ 항목 추가</button>
-    </div>
+    </div>`;
 
+  const guideCard = `
     <div class="card"><h3>📖 출장 가이드</h3>
       ${(window.APP_DATA.prep_sections || []).map((s, i) => `
         <button class="btn ghost block left info-btn" data-guide="${i}">📘 ${esc(s.title)}</button>`).join("")}
-    </div>
+    </div>`;
 
+  const localCard = `
     <div class="card"><h3>🧭 현지 생활 가이드</h3>
       <div class="route-info" style="margin:0;padding:0;border:0;">
         <button class="btn ghost small" data-lg="emergency">🆘 응급·안전</button>
@@ -236,13 +242,19 @@ Views.prep = function () {
         <button class="btn ghost small" data-lg="meals">🍽️ 식사·맛집</button>
         <button class="btn ghost small" data-lg="return">✈️ 귀국 준비</button>
       </div>
-    </div>
+    </div>`;
 
+  const reviewCard = `
     <div class="card"><h3>✍️ 다녀온 사람들 후기</h3>
       <p class="muted" style="font-size:13px;">작년·재작년 참석자들의 실전 팁 모음이에요.</p>
       ${REINVENT_REVIEWS.map((r) => `
         <a class="btn ghost block left info-btn" href="${r.url}" target="_blank" rel="noopener">🔗 ${esc(r.title)}<br><span class="muted" style="font-size:12px;font-weight:400;">${esc(r.desc)}</span></a>`).join("")}
     </div>`;
+
+  // 내 출장 정보는 항상 최상단. 출장 전에는 출발 준비·준비물 먼저, 11/30부터는 가이드 먼저.
+  const guides = guideCard + localCard + reviewCard;
+  const departPrep = departCard + packCard;
+  el.innerHTML = tripCard + (tripActive ? guides + departPrep : departPrep + guides);
 
   $$("#view-prep [data-dt]").forEach((c) => c.onchange = () => DepartTasks.toggle(c.dataset.dt));
   $$("#view-prep [data-guide]").forEach((b) => b.onclick = () => {

@@ -249,8 +249,6 @@ function switchTab(name) {
   currentTab = name;
   if (name === "planner" && typeof plannerManual !== "undefined") plannerManual = false; // 들어올 때마다 현지 날짜로
   $$("#tabbar button").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
-  const gear = $("#header-settings");
-  if (gear) gear.classList.toggle("active", name === "settings");
   $$("#views .view").forEach((v) => v.classList.toggle("active", v.id === "view-" + name));
   if (Views[name]) Views[name]();
   window.scrollTo(0, 0);
@@ -282,7 +280,7 @@ function applyTheme() {
   const changed = document.documentElement.dataset.theme !== t;
   document.documentElement.dataset.theme = t;
   const mc = document.querySelector('meta[name="theme-color"]');
-  if (mc) mc.content = t === "dark" ? "#16233f" : "#0f1f3d"; // 상단 헤더 색과 맞춤
+  if (mc) mc.content = t === "dark" ? "#16233f" : "#ffffff"; // 상단 헤더 색과 맞춤
   // 시간표 블록 색은 렌더 시점에 계산되므로 테마가 바뀌면 다시 그림
   if (changed && currentTab === "planner" && Views.planner) Views.planner();
 }
@@ -539,7 +537,7 @@ function stepProfile() {
   obShell(`
     <h2>프로필</h2>
     <label class="field">닉네임 (선택)</label>
-    <input type="text" id="ob-nick" placeholder="예: 클라우드김" maxlength="20">
+    <input type="text" id="ob-nick" placeholder="예: ch.9" maxlength="20">
     <label class="field">관심 토픽 (최대 10개)</label>
     <div class="chip-row" id="ob-topics">${topics.map((t) => `<button class="chip" data-t="${esc(t)}">${esc(t)}</button>`).join("")}</div>
     <label class="field" style="display:block;margin-top:10px;">관심 AWS 서비스 (최대 5개 · 선택)</label>
@@ -604,7 +602,7 @@ Views.home = function () {
   const pending = sessionsPending();
 
   $("#view-home").innerHTML = `
-    <div class="card" style="background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;">
+    <div class="card hero">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
         <div>
           <div style="font-size:13px;opacity:.85">안녕하세요, ${nick} 👋</div>
@@ -800,8 +798,6 @@ document.addEventListener("DOMContentLoaded", () => {
   tickClock();
   setInterval(tickClock, 10000);
   $$("#tabbar button").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
-  const gearBtn = $("#header-settings");
-  if (gearBtn) gearBtn.onclick = () => switchTab("settings");
   if (!S().onboarded) startOnboarding();
   else { switchTab("home"); maybeShowInstallGuide(); }
   Share.checkLink();

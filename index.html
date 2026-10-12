@@ -23,6 +23,8 @@
     var t = st && st.theme;
     if (t !== "light" && t !== "dark") t = (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
     document.documentElement.dataset.theme = t;
+    var mc = document.querySelector('meta[name="theme-color"]'); // 스플래시 때부터 상태바 색 맞춤
+    if (mc) mc.content = (t === "dark") ? "#16233f" : "#ffffff";
   } catch (e) {}
 })();
 </script>
@@ -30,7 +32,20 @@
 <body>
 <div id="splash">
   <div class="splash-inner">
-    <img src="icons/icon.svg" alt="" class="splash-bag">
+    <svg class="splash-bag" viewBox="0 0 120 120" role="img" aria-label="AWS re:Invent 출장">
+      <rect class="lg-tile" x="6" y="6" width="108" height="108" rx="27"/>
+      <path class="lg-stroke" d="M38 44 V38 q0 -5 5 -5 h10 q5 0 5 5 v6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect class="lg-fill" x="20" y="44" width="56" height="42" rx="8"/>
+      <line class="lg-seam" x1="24" y1="56" x2="72" y2="56" stroke-width="2.3"/>
+      <rect x="41" y="50" width="14" height="10" rx="3" fill="#ff9900"/>
+      <g transform="rotate(13 87 88)">
+        <path class="lg-stroke" d="M66 76 l-6 -6" stroke-width="2.4" stroke-linecap="round"/>
+        <rect x="66" y="76" width="42" height="24" rx="5" fill="#ff9900"/>
+        <circle cx="72" cy="82" r="2" fill="#17264a"/>
+        <text x="90" y="87" font-size="7.5" font-weight="800" text-anchor="middle" fill="#17264a" font-family="-apple-system,BlinkMacSystemFont,Arial,sans-serif">AWS</text>
+        <text x="90" y="96" font-size="7.5" font-weight="800" text-anchor="middle" fill="#17264a" font-family="-apple-system,BlinkMacSystemFont,Arial,sans-serif">re:Invent</text>
+      </g>
+    </svg>
     <!-- AWS 스마일 화살표 (공식 로고와 같은 형태: 끝이 가늘어지는 곡선 + 갈고리형 화살촉) -->
     <svg class="splash-arrow" viewBox="-2 112 308 72" aria-hidden="true">
       <path class="smile-body" fill="#ff9900" d="M273.5,143.7c-32.9,24.3-80.7,37.2-121.8,37.2c-57.6,0-109.5-21.3-148.7-56.7c-3.1-2.8-0.3-6.6,3.4-4.4c42.4,24.6,94.7,39.5,148.8,39.5c36.5,0,76.6-7.6,113.5-23.2C274.2,133.6,278.9,139.7,273.5,143.7z"/>
@@ -42,10 +57,7 @@
 <div id="app">
   <header id="app-header">
     <div class="header-title">re:Invent 2026 출장</div>
-    <div class="header-right">
-      <div class="header-clock"><span id="clock-vegas"></span><span id="clock-kst"></span></div>
-      <button id="header-settings" class="header-gear" aria-label="설정" title="설정">⚙️</button>
-    </div>
+    <div class="header-clock"><span id="clock-vegas"></span><span id="clock-kst"></span></div>
   </header>
 
   <main id="views">
@@ -61,8 +73,9 @@
     <button data-tab="home" class="active"><span class="ico">🏠</span><span>홈</span></button>
     <button data-tab="sessions"><span class="ico">🎙️</span><span>세션</span></button>
     <button data-tab="planner"><span class="ico">🗓️</span><span>내 일정</span></button>
-    <button data-tab="prep"><span class="ico">🧳</span><span>사전준비</span></button>
+    <button data-tab="prep"><span class="ico">🧳</span><span>준비·정보</span></button>
     <button data-tab="expenses"><span class="ico">🧾</span><span>정산</span></button>
+    <button data-tab="settings"><span class="ico">⚙️</span><span>설정</span></button>
   </nav>
 </div>
 
