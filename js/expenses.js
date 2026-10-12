@@ -126,6 +126,14 @@ Views.expenses = function () {
         <button class="btn ghost" id="ex-export"${S().expenses.length ? "" : " disabled"}>📤 내보내기</button>
       </div>
     </div>
+    ${list.length ? `<div class="card"><h3>📊 분류별 합계</h3>
+      ${(() => {
+        const by = {};
+        list.forEach((e) => { const k = e.category || "etc"; (by[k] = by[k] || { usd: 0, krw: 0 }); by[k].usd += (+e.amount_usd || 0); by[k].krw += (+e.amount_krw || 0); });
+        return Object.entries(by).sort((a, b) => b[1].usd - a[1].usd)
+          .map(([k, v]) => `<div class="kv"><span>${esc(EXP_CATS[k] || k)}</span><b>$${fmt(v.usd)} <span class="muted" style="font-weight:400;">· ₩${fmt(v.krw)}</span></b></div>`).join("");
+      })()}
+    </div>` : ""}
     ${ordered.length ? ordered.map((e) => `
       <div class="card ex-card">
         <div class="ex-main">

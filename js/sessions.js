@@ -3,6 +3,7 @@
 
 const SESSION_PAGE = 100; // 한 번에 그리는 카드 수 ('더 보기'로 늘림)
 const RES_LABEL = { reserved: "예약됨", waitlist: "대기", none: "미예약" };
+const SORT_LABEL = { time: "시간순", recommended: "추천순", level: "레벨순" };
 
 /* 세션 타입·난이도·형식 한국어 표기 */
 const TYPE_KO = { breakout: "브레이크아웃", workshop: "워크숍", "chalk-talk": "초크토크", "builders-session": "빌더 세션",
@@ -30,6 +31,17 @@ function shortService(name) {
   const m = String(name || "").match(/\(([^)]+)\)\s*$/);
   return m ? m[1] : String(name || "");
 }
+/* 세션 검색 인덱스 (제목·코드·서비스·소개를 소문자로 미리 만들어 둠 — 발표 노트 등에서 반복 스캔 비용 절감) */
+let _searchIndex = null;
+function sessionIndex() {
+  if (!_searchIndex) {
+    _searchIndex = allSessions().map((s) => ({
+      s, hay: `${s.title} ${s.code} ${(s.services || []).join(" ")} ${s.abstract || ""}`.toLowerCase()
+    }));
+  }
+  return _searchIndex;
+}
+
 /* 카탈로그에 나온 AWS 서비스 [{name, n}] (세션 수 많은 순) */
 let _serviceList = null;
 function serviceList() {
@@ -50,8 +62,9 @@ function roomLabel(s) {
 }
 
 const Sessions = {
-  q: "", f: { date: "", venue: "", type: "", level: "", topic: "", service: "", format: "", delivery: "" },
+  q: "", f: { date: "", venue: "", type: "", level: "", topic: "", service: "", format: "" },
   venueGroup: false, // 베뉴별 모아보기
+  sort: "time",      // time | recommended | level
   limit: SESSION_PAGE,
 
   all() { return allSessions(); },
@@ -67,13 +80,40 @@ const Sessions = {
       if (f.topic && !(s.topics || []).includes(f.topic)) return false;
       if (f.service && !(s.services || []).includes(f.service)) return false;
       if (f.format && s.session_format !== f.format) return false;
-      if (f.delivery && s.delivery !== f.delivery) return false;
       if (q) {
         const hay = `${s.title} ${s.abstract_ko || ""} ${s.abstract || ""} ${(s.speakers || []).join(" ")} ${s.code} ${(s.services || []).join(" ")} ${typeKo(s.session_type)}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
     });
+  },
+
+  /* 정렬: 시간순(기본) · 추천순(관심 토픽·서비스 점수) · 레벨순 */
+  sortList(list) {
+    const by = this.sort || "time";
+    const key = (s) => String((s.date || "") + (s.start_time || ""));
+    const arr = list.slice();
+    if (by === "recommended") {
+      const cache = new Map();
+      const sc = (s) => { if (!cache.has(s.session_id)) cache.set(s.session_id, Suggest.score(s, {})); return cache.get(s.session_id); };
+      arr.sort((a, b) => sc(b) - sc(a) || key(a).localeCompare(key(b)));
+    } else if (by === "level") {
+      arr.sort((a, b) => (Number(a.level) || 999) - (Number(b.level) || 999) || key(a).localeCompare(key(b)));
+    } else {
+      arr.sort((a, b) => key(a).localeCompare(key(b)));
+    }
+    return arr;
+  },
+
+  /* 홈 '추천 세션' 한 줄 (날짜 포함) */
+  recRowHTML(s) {
+    return `<div class="sg-row">
+      <div class="sg-main" data-rec-open="${esc(s.session_id)}" role="button" tabindex="0">
+        <b>${esc(s.title)}</b>
+        <span class="muted">${s.date ? esc(dayLabel(s.date)) + " " : ""}${esc(s.start_time || "")}${s.end_time ? "–" + esc(s.end_time) : ""} · 📍 ${esc(shortVenue(s.venue))} · ${esc(typeKo(s.session_type))}</span>
+      </div>
+      <div class="sg-act"><button class="sg-btn primary" data-rec-add="${esc(s.session_id)}">담기</button></div>
+    </div>`;
   },
 
   toggleFav(id) {
@@ -338,7 +378,7 @@ Sessions.renderResults = function () {
         <p>세션 목록을 가져오지 못했어요.<br>공식 카탈로그에서 다시 수집하면<br>여기에 2,000개+ 세션이 표시됩니다.</p>
       </div>`;
   } else {
-    const list = Sessions.filtered();
+    const list = Sessions.sortList(Sessions.filtered());
     const activeFilterCount = Object.values(Sessions.f).filter((v) => v).length;
     const shown = Math.min(list.length, Sessions.limit);
     const cards = Sessions.venueGroup ? Sessions.groupedByVenueHTML(list)
@@ -347,7 +387,10 @@ Sessions.renderResults = function () {
       ? `<button class="btn ghost block load-more" id="ss-more">더 보기 (${(list.length - shown).toLocaleString("ko-KR")}개 남음)</button>` : "";
     html = `
       <div class="ss-bar">
-        <span class="muted">${list.length.toLocaleString("ko-KR")}개 세션${activeFilterCount ? ` · 필터 ${activeFilterCount}개` : ""}</span>
+        <span class="ss-bar-l">
+          <span class="muted">${list.length.toLocaleString("ko-KR")}개 세션${activeFilterCount ? ` · 필터 ${activeFilterCount}개` : ""}</span>
+          <button class="chip" id="ss-sort">↕️ ${SORT_LABEL[Sessions.sort] || "시간순"}</button>
+        </span>
         <span class="ss-bar-r">
           <button class="chip" id="ss-notes">📝 내 노트</button>
           <button class="chip" id="ss-news">📣 발표 노트</button>
@@ -371,6 +414,8 @@ Sessions.renderResults = function () {
   if (snt) snt.onclick = () => SessionNotes.open();
   const vg = $("#ss-venue-group");
   if (vg) vg.onclick = () => { Sessions.venueGroup = !Sessions.venueGroup; Sessions.renderResults(); };
+  const srt = $("#ss-sort");
+  if (srt) srt.onclick = () => Sessions.openSortMenu();
   const clr = $("#ss-clear-f");
   if (clr) clr.onclick = () => { Sessions.resetFilters(); Sessions.renderResults(); };
 };
@@ -381,8 +426,30 @@ Sessions.refreshAfterFav = function () {
 };
 
 Sessions.resetFilters = function () {
-  Sessions.f = { date: "", venue: "", type: "", level: "", topic: "", service: "", format: "", delivery: "" };
+  Sessions.f = { date: "", venue: "", type: "", level: "", topic: "", service: "", format: "" };
   Sessions.limit = SESSION_PAGE;
+};
+
+Sessions.openSortMenu = function () {
+  const cur = Sessions.sort || "time";
+  const opts = [
+    ["time", "🕘 시간순", "이른 시간 순서"],
+    ["recommended", "✨ 추천순", "관심 토픽·서비스가 맞을수록 위로"],
+    ["level", "📊 레벨순", "입문(100) → 전문가(400)"]
+  ];
+  openModal(`
+    <h2>정렬</h2>
+    ${opts.map(([v, l, d]) => `
+      <button class="btn ${v === cur ? "" : "ghost"} block left" data-sort="${v}">${l}${v === cur ? " ✓" : ""}<br>
+        <span class="muted" style="font-size:12px;font-weight:400;">${d}</span></button>`).join("")}
+    <button class="btn ghost block" id="sort-cancel">취소</button>`);
+  $$("#modal-root [data-sort]").forEach((b) => b.onclick = () => {
+    Sessions.sort = b.dataset.sort;
+    Sessions.limit = SESSION_PAGE;
+    closeModal();
+    Sessions.renderResults();
+  });
+  $("#sort-cancel").onclick = closeModal;
 };
 
 Sessions.openFilterSheet = function () {
@@ -390,8 +457,13 @@ Sessions.openFilterSheet = function () {
   const types = [...new Set(Sessions.all().map((s) => s.session_type).filter(Boolean))].sort();
   const topics = (window.APP_DATA.topics.topics || []);
   const dates = [...new Set(Sessions.all().map((s) => s.date).filter(Boolean))].sort();
+  const FORMAT_ORDER = ["lecture", "discussion", "hands-on", "lab"];
+  const formatSet = new Set(Sessions.all().map((s) => s.session_format).filter(Boolean));
+  const formats = FORMAT_ORDER.filter((f) => formatSet.has(f))
+    .concat([...formatSet].filter((f) => !FORMAT_ORDER.includes(f)))
+    .map((f) => ({ v: f, t: FORMAT_KO[f] || f }));
   const chipGroup = (key, opts, val, labelFn) => `
-    <label class="field">${{ date: "날짜", venue: "베뉴", type: "타입", level: "레벨", topic: "토픽", service: "AWS 서비스 (세션 많은 순)" }[key]}</label>
+    <label class="field">${{ date: "날짜", venue: "베뉴", type: "타입", format: "형식 (강의·실습 등)", level: "레벨", topic: "토픽", service: "AWS 서비스 (세션 많은 순)" }[key]}</label>
     <div class="chip-row" data-fkey="${key}" style="margin-bottom:12px;">
       <button class="chip${!val ? " on" : ""}" data-v="">전체</button>
       ${opts.map((o) => {
@@ -406,6 +478,7 @@ Sessions.openFilterSheet = function () {
     ${chipGroup("date", dates.map((d) => ({ v: d, t: dayLabel(d) })), Sessions.f.date)}
     ${chipGroup("venue", venues, Sessions.f.venue)}
     ${chipGroup("type", types, Sessions.f.type)}
+    ${chipGroup("format", formats, Sessions.f.format)}
     ${chipGroup("level", ["100", "200", "300", "400"], Sessions.f.level)}
     ${chipGroup("topic", topics, Sessions.f.topic)}
     ${chipGroup("service", serviceList().slice(0, 30).concat(Sessions.f.service && !serviceList().slice(0, 30).some((x) => x.name === Sessions.f.service) ? [{ name: Sessions.f.service, n: 0 }] : [])
@@ -520,10 +593,7 @@ const News = {
   related(q) {
     const terms = this.terms(q);
     if (!terms.length) return [];
-    return allSessions().filter((s) => {
-      const hay = `${s.title} ${s.code} ${(s.services || []).join(" ")} ${s.abstract || ""}`.toLowerCase();
-      return terms.some((t) => hay.includes(t));
-    });
+    return sessionIndex().filter(({ hay }) => terms.some((t) => hay.includes(t))).map((x) => x.s);
   },
   /* 관련 세션 보기: 세션 탭 검색으로 연결 (첫 검색어 기준) */
   show(q) {

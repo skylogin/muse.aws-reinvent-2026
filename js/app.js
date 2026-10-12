@@ -178,7 +178,6 @@ function defaultState() {
     backups: {},             // session_id -> [session_id]
     daily_plan: {},          // "YYYY-MM-DD" -> [{session_id, note}]
     session_notes: {},       // session_id -> {rating, memo, updated_at}
-    search_history: [],      // {query, scope, at, result_count}
     trip: {
       flights: {
         outbound: { airline: "", flight_no: "", dep_time: "", arr_time: "", terminal: "" },
@@ -250,6 +249,8 @@ function switchTab(name) {
   currentTab = name;
   if (name === "planner" && typeof plannerManual !== "undefined") plannerManual = false; // 들어올 때마다 현지 날짜로
   $$("#tabbar button").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
+  const gear = $("#header-settings");
+  if (gear) gear.classList.toggle("active", name === "settings");
   $$("#views .view").forEach((v) => v.classList.toggle("active", v.id === "view-" + name));
   if (Views[name]) Views[name]();
   window.scrollTo(0, 0);
@@ -534,23 +535,35 @@ function stepBranch() {
 }
 function stepProfile() {
   const topics = (window.APP_DATA.topics && window.APP_DATA.topics.topics) || [];
+  const svcs = serviceList().slice(0, 20);
   obShell(`
     <h2>프로필</h2>
     <label class="field">닉네임 (선택)</label>
     <input type="text" id="ob-nick" placeholder="예: 클라우드김" maxlength="20">
     <label class="field">관심 토픽 (최대 10개)</label>
     <div class="chip-row" id="ob-topics">${topics.map((t) => `<button class="chip" data-t="${esc(t)}">${esc(t)}</button>`).join("")}</div>
+    <label class="field" style="display:block;margin-top:10px;">관심 AWS 서비스 (최대 5개 · 선택)</label>
+    <div class="chip-row" id="ob-svcs">${svcs.map((x) => `<button class="chip" data-s="${esc(x.name)}">${esc(shortService(x.name))}</button>`).join("")}</div>
+    <p class="muted" style="font-size:12px;margin:2px 0 0;">관심사는 홈의 맞춤 세션 추천에 반영돼요. 나중에 설정에서 바꿀 수 있어요.</p>
     <button class="btn block" id="ob-done">시작하기</button>`);
   const picked = new Set();
+  const svcPicked = new Set();
   $$("#ob-topics .chip").forEach((c) => c.onclick = () => {
     const t = c.dataset.t;
     if (picked.has(t)) { picked.delete(t); c.classList.remove("on"); }
     else if (picked.size < 10) { picked.add(t); c.classList.add("on"); }
     else toast("최대 10개까지 선택할 수 있어요");
   });
+  $$("#ob-svcs .chip").forEach((c) => c.onclick = () => {
+    const s = c.dataset.s;
+    if (svcPicked.has(s)) { svcPicked.delete(s); c.classList.remove("on"); }
+    else if (svcPicked.size < 5) { svcPicked.add(s); c.classList.add("on"); }
+    else toast("최대 5개까지 선택할 수 있어요");
+  });
   $("#ob-done").onclick = () => {
     S().profile.nickname = $("#ob-nick").value.trim();
     S().profile.topics = Array.from(picked);
+    S().profile.services = Array.from(svcPicked);
     S().onboarded = true;
     Store.save();
     finishOnboarding();
@@ -604,6 +617,22 @@ Views.home = function () {
     ${pending ? `<div class="notice">📡 세션 카탈로그 수집 대기 중 — 공식 카탈로그에서 수집하면 세션 탭이 활성화됩니다.</div>` : ""}
 
     <div id="home-upcoming">${Planner.upcomingHTML()}</div>
+    ${(() => {
+      if (phase() === "after" || pending) return "";
+      const prof = st.profile || {};
+      const hasInterests = (prof.topics || []).length || (prof.services || []).length;
+      if (!hasInterests) {
+        return `<div class="card"><h3>✨ 맞춤 세션 추천</h3>
+          <p class="muted" style="margin:0 0 8px;">관심 토픽·AWS 서비스를 설정하면 2,200여 개 세션 중 나에게 맞는 걸 골라 드려요.</p>
+          <button class="btn ghost block small" id="home-rec-profile">관심사 설정하기</button></div>`;
+      }
+      const recs = Suggest.recommended(4);
+      if (!recs.length) return "";
+      return `<div class="card"><h3>✨ 나를 위한 추천 세션</h3>
+        <p class="muted" style="font-size:12px;margin:0 0 6px;">관심 토픽·서비스 기준 · 아직 안 담은 세션이에요.</p>
+        <div id="home-rec-list">${recs.map((s) => Sessions.recRowHTML(s)).join("")}</div>
+        <button class="btn ghost block small" id="home-rec-more">추천 세션 더 보기</button></div>`;
+    })()}
     ${Expo.cardHTML()}
     ${(() => {
       const items = News.items();
@@ -634,6 +663,12 @@ Views.home = function () {
   const hn = $("#home-news");
   if (hn) hn.onclick = () => News.open();
   $$("#view-home [data-news-q]").forEach((b) => b.onclick = () => News.show(b.dataset.newsQ));
+  const rpf = $("#home-rec-profile");
+  if (rpf) rpf.onclick = () => Settings.editProfile();
+  const rmo = $("#home-rec-more");
+  if (rmo) rmo.onclick = () => { Sessions.sort = "recommended"; Sessions.resetFilters(); switchTab("sessions"); };
+  $$("#home-rec-list [data-rec-open]").forEach((el) => el.onclick = () => Sessions.openDetail(el.dataset.recOpen));
+  $$("#home-rec-list [data-rec-add]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); Sessions.toggleFav(b.dataset.recAdd); Views.home(); });
   Weather.refresh();
 };
 
@@ -765,6 +800,8 @@ document.addEventListener("DOMContentLoaded", () => {
   tickClock();
   setInterval(tickClock, 10000);
   $$("#tabbar button").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
+  const gearBtn = $("#header-settings");
+  if (gearBtn) gearBtn.onclick = () => switchTab("settings");
   if (!S().onboarded) startOnboarding();
   else { switchTab("home"); maybeShowInstallGuide(); }
   Share.checkLink();

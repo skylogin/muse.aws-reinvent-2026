@@ -151,6 +151,55 @@ const Planner = {
     list.forEach((a, i) => list.slice(i + 1).forEach((b) => { if (b.s < a.e && a.s < b.e) out.push([a, b]); }));
     return out;
   },
+  /* 행사 전체 기간에서 시간이 겹치는 세션 쌍 [{date, a, b}] */
+  allConflicts() {
+    const out = [];
+    DAYS.forEach((d) => this.conflictsFor(d).forEach(([a, b]) => out.push({ date: d, a: a.it, b: b.it })));
+    return out;
+  },
+  /* 일정·관심에서 세션 빼기 (여러 곳에서 공용) */
+  removeFromPlan(id) {
+    const st = S();
+    Object.keys(st.daily_plan).forEach((d) => { st.daily_plan[d] = (st.daily_plan[d] || []).filter((x) => x.session_id !== id); });
+    const fi = st.favorites.indexOf(id); if (fi >= 0) st.favorites.splice(fi, 1);
+    Store.save();
+  },
+  /* 일정 충돌 점검 시트 */
+  openConflicts() {
+    const sessRow = (it, date) => `
+      <div class="sg-row">
+        <div class="sg-main" data-cf-open="${esc(it.session_id || it.id)}" data-cf-date="${esc(date)}" role="button" tabindex="0">
+          <b>${esc(it.title)}</b>
+          <span class="muted">${esc(it.start_time || "")}${it.end_time ? "–" + esc(it.end_time) : ""} · 📍 ${esc(shortVenue(it.venue))}</span>
+        </div>
+        <div class="sg-act"><button class="sg-btn" data-cf-rm="${esc(it.session_id || it.id)}">빼기</button></div>
+      </div>`;
+    const render = () => {
+      const cf = this.allConflicts();
+      if (!cf.length) return `<p class="muted">겹치는 세션이 없어요. 깔끔하네요 ✨</p>`;
+      return cf.map((c) => `<div class="card" style="margin:0 0 10px;">
+        <div class="muted" style="font-size:12px;margin-bottom:2px;">${esc(dayLabel(c.date))} · 시간 겹침</div>
+        ${sessRow(c.a, c.date)}${sessRow(c.b, c.date)}
+      </div>`).join("");
+    };
+    openSheet({
+      title: "⚠️ 일정 충돌 점검",
+      body: `<p class="muted" style="font-size:13px;margin:0 0 8px;">같은 시간대에 둘 다 담은 세션이에요. 하나를 빼거나, 세션을 눌러 다른 회차·대체 세션으로 바꿔 보세요. (예약은 중복 시간대에 할 수 없어요.)</p>
+        <div id="cf-list">${render()}</div>`,
+      actions: `<button class="btn" id="cf-close">확인</button>`
+    });
+    const bind = () => {
+      $$("#cf-list [data-cf-open]").forEach((el) => el.onclick = () => { closeModal(); Planner.goto(el.dataset.cfDate, el.dataset.cfOpen); });
+      $$("#cf-list [data-cf-rm]").forEach((b) => b.onclick = () => {
+        Planner.removeFromPlan(b.dataset.cfRm);
+        $("#cf-list").innerHTML = render(); bind();
+        Views.planner();
+        toast("일정에서 뺐어요");
+      });
+    };
+    bind();
+    $("#cf-close").onclick = () => $("#modal-overlay")._dismiss();
+  },
 
   /* ---- timetable: 구글 캘린더식 배치 ----
      · 시작이 비슷한(NEST_MIN 이내) 겹치는 일정 → 나란히
@@ -569,10 +618,8 @@ const Planner = {
     Suggest.bind($(".bs-body"), { baseId: id, swap: true, onDone: () => Views.planner() });
     Sessions.bindSummary($(".bs-body"));
     $("#pi-unfav").onclick = () => {
-      const st = S();
-      Object.keys(st.daily_plan).forEach((d) => { st.daily_plan[d] = (st.daily_plan[d] || []).filter((x) => x.session_id !== id); });
-      const fi = st.favorites.indexOf(id); if (fi >= 0) st.favorites.splice(fi, 1);
-      Store.save(); closeModal(); Views.planner(); toast("일정에서 뺐어요");
+      Planner.removeFromPlan(id);
+      closeModal(); Views.planner(); toast("일정에서 뺐어요");
     };
     $("#pi-close").onclick = dismiss;
   },
@@ -777,6 +824,10 @@ Views.planner = function () {
       <button class="peer-chip add" id="pl-share">👥 ${Share.peers().length ? "공유·받기" : "동료와 일정 공유"}</button>
       ${Share.peers().length ? `<button class="peer-chip add" id="pl-peers">관리</button>` : ""}
     </div>
+    ${(() => {
+      const cf = Planner.allConflicts();
+      return cf.length ? `<button class="warn-box conflict-banner" id="pl-conflicts">⚠️ 시간이 겹치는 세션 ${cf.length}건 — 눌러서 점검·정리</button>` : "";
+    })()}
     ${allday.length ? `<div id="pl-allday">${allday.map((it) => `
       <button class="allday-chip" data-pitem="${esc(Planner.itemId(it))}" role="button">
         <span class="pin">📌</span>
@@ -825,6 +876,8 @@ Views.planner = function () {
     const p = Share.peer(b.dataset.peer); p.visible = p.visible === false; Store.save(); Views.planner();
   });
   $("#pl-share").onclick = () => Share.open();
+  const cfb = $("#pl-conflicts");
+  if (cfb) cfb.onclick = () => Planner.openConflicts();
   const pm = $("#pl-peers");
   if (pm) pm.onclick = () => Share.openManage();
   $$("#pl-timeline [data-peeritem]").forEach((b) => b.onclick = () => {

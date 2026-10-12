@@ -31,6 +31,20 @@ const Suggest = {
     return sc;
   },
 
+  /* 홈 맞춤 추천: 관심 토픽·서비스 점수가 높은 세션 (이미 담은 건 제외) */
+  recommended(limit) {
+    const prof = S().profile || {};
+    if (!(prof.topics || []).length && !(prof.services || []).length) return [];
+    const favs = new Set(S().favorites);
+    return allSessions()
+      .filter((s) => s.date && s.start_time && !favs.has(s.session_id) && !/sponsored by/i.test(s.title || ""))
+      .map((s) => ({ s, score: this.score(s, {}) }))
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score || (a.s.date + a.s.start_time).localeCompare(b.s.date + b.s.start_time))
+      .slice(0, limit || 5)
+      .map((x) => x.s);
+  },
+
   /* 같은 세션의 다른 회차 (코드 끝 -R, -R1… 만 다른 것) — 만석·대기일 때 다른 날 같은 내용을 들을 수 있음 */
   baseCode(code) { return String(code || "").replace(/-R\d*$/, ""); },
   repeats(id) {
