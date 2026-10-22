@@ -222,25 +222,18 @@ const FIXED_EVENTS = [
   { id: "badge-air", date: "2026-11-29", start: "07:00", end: "23:59", title: "배지 수령", venue: "Harry Reid 공항 T1·T3", note: "공항 도착 시 수령 가능", src: "guide", allday: true },
   { id: "badge-venue", date: "2026-11-29", start: "10:00", end: "20:00", title: "배지 수령", venue: "MGM Grand · The Venetian", note: "", src: "guide", allday: true },
   { id: "kickoff", date: "2026-11-29", start: "10:00", end: "18:00", title: "킥오프 액티비티", venue: "Caesars Forum · The Venetian", note: "SWAG 수령·주간 계획", src: "guide", allday: true },
-  { id: "expo-welcome", date: "2026-11-30", start: "16:00", end: "19:00", title: "Expo 웰컴 리셉션", venue: "The Venetian", note: "420+ 스폰서 부스", src: "guide" },
-  { id: "expo-happy", date: "2026-12-02", start: "16:30", end: null, title: "Expo 해피아워", venue: "The Venetian", note: "", src: "guide" },
+  { id: "expo-welcome", date: "2026-11-30", start: "16:00", end: "19:00", title: "Expo 웰컴 리셉션", venue: "The Venetian", note: "450+ 파트너·AWS 전문가 부스", src: "official" },
+  { id: "expo-happy", date: "2026-12-02", start: "16:30", end: null, title: "Expo 해피아워", venue: "The Venetian", note: "", src: "official" },
   { id: "replay", date: "2026-12-03", start: "19:30", end: "23:59", title: "re:Play 파티", venue: "Las Vegas Festival Grounds", note: "야외 — 방한·귀마개 필수", src: "guide" }
 ];
 
-/* 키노트: 공식 일정이 데이터(event_info.keynotes.items)에 들어오면 자동으로 고정 일정에 추가
-   형식: [{ date: "2026-12-01", start: "08:00", end: "10:30", title: "...", speaker: "...", venue: "The Venetian" }] */
+/* 키노트: 공식 카탈로그의 키노트 세션 (일반 세션처럼 '담기'로 내 일정에 추가)
+   통역·중계·비고는 event_info.keynotes */
 function keynoteInfo() { return (window.APP_DATA.event_info && window.APP_DATA.event_info.keynotes) || {}; }
-function keynoteEvents() {
-  const k = keynoteInfo(), items = Array.isArray(k.items) ? k.items : [];
-  return items.filter((x) => x && x.date && x.start).map((x, i) => ({
-    id: "keynote-" + (x.id || i), date: x.date, start: x.start, end: x.end || null,
-    title: "🎤 " + (x.title || "키노트") + (x.speaker ? ` — ${x.speaker}` : ""),
-    venue: x.venue || "", keynote: true, src: "official",
-    note: [k.korean_interpretation ? "한국어 동시통역(헤드셋)" : "", k.livestream ? "라이브스트림" : ""].filter(Boolean).join(" · ")
-  }));
+function keynoteSessions() {
+  return allSessions().filter((s) => s.session_type === "keynote")
+    .sort((a, b) => (a.date + a.start_time).localeCompare(b.date + b.start_time));
 }
-/* 고정 이벤트 + 공개된 키노트 */
-function allFixed() { return FIXED_EVENTS.concat(keynoteEvents()); }
 
 /* ---------- tab router ---------- */
 const Views = {};
@@ -251,7 +244,7 @@ function switchTab(name) {
   $$("#tabbar button").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
   $$("#views .view").forEach((v) => v.classList.toggle("active", v.id === "view-" + name));
   if (Views[name]) Views[name]();
-  window.scrollTo(0, 0);
+  $("#views").scrollTop = 0;
 }
 
 /* ---------- header clock ---------- */
@@ -644,15 +637,29 @@ Views.home = function () {
         <span class="dot"></span><span class="txt">${esc(t.text)}</span><span class="chev">›</span></div>`).join("") : `<p class="muted">할 일이 없어요. 완벽해요 ✨</p>`}
     </div>
     ${(() => {
-      const k = keynoteInfo(), kn = keynoteEvents();
+      const k = keynoteInfo(), kn = keynoteSessions();
+      const who = (s) => {
+        const n = (s.speakers || []).map((x) => String(x).split(" · ")[0]);
+        return n.length > 2 ? `${n.slice(0, 2).join(", ")} 외 ${n.length - 2}명` : n.join(", ");
+      };
+      const places = [...new Set(kn.map((s) => shortVenue(s.venue)))].join(", ");
       return `<div class="card"><h3>🎤 키노트</h3>
-        ${kn.length ? kn.map((x) => `<div class="kv"><span>${esc(dayLabel(x.date))} ${esc(x.start)}</span><b>${esc(x.title.replace(/^🎤 /, ""))}</b></div>`).join("") +
-          `<p class="muted" style="font-size:12px;margin:6px 0 0;">내 일정 시간표에 자동으로 들어가 있어요.</p>`
-        : `<p class="muted" style="font-size:13px;margin:0;">공식 일정·연사는 아직 공개 전이에요. 공개되면 내 일정에 자동으로 추가돼요.</p>`}
+        ${kn.length ? kn.map((s) => {
+          const on = st.favorites.includes(s.session_id);
+          return `<div class="sg-row">
+            <div class="sg-main" data-kn-open="${esc(s.session_id)}" role="button" tabindex="0">
+              <b>${esc(s.title)}</b>
+              <span class="muted">${esc(dayLabel(s.date))} ${esc(s.start_time)}–${esc(s.end_time)}${who(s) ? " · " + esc(who(s)) : ""}</span>
+            </div>
+            <div class="sg-act"><button class="sg-btn${on ? " on" : " primary"}" data-kn-fav="${esc(s.session_id)}">${on ? "담김 ✓" : "담기"}</button></div>
+          </div>`;
+        }).join("") +
+          `<p class="muted" style="font-size:12px;margin:6px 0 0;">📍 ${esc(places)} · 담으면 내 일정 시간표에 들어가요.${k.note ? " " + esc(k.note) : ""}</p>`
+        : `<p class="muted" style="font-size:13px;margin:0;">공식 일정·연사는 아직 공개 전이에요.</p>`}
         ${k.korean_interpretation ? `<div class="notice" style="margin-bottom:0;">🇰🇷 ${esc(k.korean_interpretation_note || "키노트 한국어 실시간 통역 제공")}${k.livestream ? ` · ${esc(k.livestream)}` : ""}</div>` : ""}
       </div>
       <div class="card"><h3>추후 확인</h3>
-        <div class="muted" style="font-size:13px;">셔틀 세부 노선 · Expo 공식 시간 — 공식 발표 시 앱에 반영됩니다.</div>
+        <div class="muted" style="font-size:13px;">셔틀 세부 노선·시간표 — 공식 발표 시 앱에 반영됩니다.</div>
       </div>`;
     })()}`;
   $$("#view-home [data-go]").forEach((el) => el.onclick = () => switchTab(el.dataset.go));
@@ -667,6 +674,8 @@ Views.home = function () {
   if (rmo) rmo.onclick = () => { Sessions.sort = "recommended"; Sessions.resetFilters(); switchTab("sessions"); };
   $$("#home-rec-list [data-rec-open]").forEach((el) => el.onclick = () => Sessions.openDetail(el.dataset.recOpen));
   $$("#home-rec-list [data-rec-add]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); Sessions.toggleFav(b.dataset.recAdd); Views.home(); });
+  $$("#view-home [data-kn-open]").forEach((el) => el.onclick = () => Sessions.openDetail(el.dataset.knOpen));
+  $$("#view-home [data-kn-fav]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); Sessions.toggleFav(b.dataset.knFav); Views.home(); });
   Weather.refresh();
 };
 

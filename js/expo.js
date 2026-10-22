@@ -101,12 +101,24 @@ const Expo = {
     $("#bx-close").onclick = () => $("#modal-overlay")._dismiss();
   },
 
+  /* 공식 운영 시간: event_info.expo의 요일별 값 "11/30 4:00 PM–7:00 PM (오픈)" */
+  hoursHTML() {
+    const e = (window.APP_DATA.event_info || {}).expo || {};
+    const rows = ["monday", "tuesday", "wednesday", "thursday"].map((k) => e[k]).filter(Boolean).map((v) => {
+      const [md, ...rest] = String(v).split(" ");
+      const [m, d] = md.split("/");
+      return `<div class="kv"><span>${esc(dayLabel(`${EVENT_START.slice(0, 4)}-${pad2(m)}-${pad2(d)}`))}</span><b>${esc(rest.join(" "))}</b></div>`;
+    });
+    return rows.length ? `<div class="muted" style="font-size:12px;">운영 시간 · 📍 Venetian${e.partners ? " · " + esc(e.partners) : ""}</div>${rows.join("")}` : "";
+  },
+
   /* 홈 탭 카드 */
   cardHTML() {
     const list = this.list();
     const done = this.visitedCount();
     const pct = list.length ? Math.round((done / list.length) * 100) : 0;
-    return `<div class="card"><h3>🎪 Expo 부스 스탬프</h3>
+    return `<div class="card"><h3>🎪 Expo · 부스 스탬프</h3>
+      ${this.hoursHTML()}
       ${list.length
         ? `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
              <b>${done}/${list.length} 방문</b><span class="muted">${pct}%</span></div>

@@ -13,6 +13,8 @@ function todayClamped() {
 
 /* 공식 카탈로그 베뉴 표기 → event_info 베뉴명 매핑 (좌표 조회용) */
 const VENUE_ALIASES = { "Wynn/Encore": "Wynn", "Venetian": "The Venetian" };
+/* 행사 데이터(event_info.venues)에 없는 고정 일정 장소의 좌표 — re:Play 장소 (Wikipedia 좌표, 스트립 북쪽) */
+const EXTRA_VENUES = [{ name: "Las Vegas Festival Grounds", lat: 36.1425, lng: -115.1603 }];
 /* 좁은 자리에 쓰는 짧은 베뉴명 */
 const VENUE_SHORT = { "Caesars Forum": "Forum", "Caesars Palace": "Caesars", "MGM Grand": "MGM", "The Venetian": "Venetian", "Venetian": "Venetian", "Wynn/Encore": "Wynn", "Wynn": "Wynn", "Encore": "Encore" };
 const shortVenue = (v) => VENUE_SHORT[v] || v || "";
@@ -54,7 +56,7 @@ const Planner = {
 
   itemsFor(date) {
     const items = [];
-    allFixed().filter((f) => f.date === date && !S().fixed_off.includes(f.id))
+    FIXED_EVENTS.filter((f) => f.date === date && !S().fixed_off.includes(f.id))
       .forEach((f) => {
         const edit = (S().fixed_edits || {})[f.id];
         items.push({ kind: "fixed", ...f, ...(edit || {}) });
@@ -98,9 +100,11 @@ const Planner = {
   /* ---- travel ---- */
   venueCoords(name) {
     const key = VENUE_ALIASES[name] || name;
-    const v = (window.APP_DATA.event_info.venues || []).find((x) => x.name === key);
+    const v = (window.APP_DATA.event_info.venues || []).concat(EXTRA_VENUES).find((x) => x.name === key);
     return v ? { lat: v.lat, lng: v.lng } : null;
   },
+  /* 도보 시간: 직선거리 기준 시속 3.5km(카지노 우회·인파 감안) + 건물 출입 10분 */
+  walkMinutes(km) { return Math.round(km / 3.5 * 60) + 10; },
   havKm(a, b) {
     const R = 6371, r = (d) => d * Math.PI / 180;
     const dLa = r(b.lat - a.lat), dLo = r(b.lng - a.lng);
@@ -114,14 +118,16 @@ const Planner = {
     const a = this.venueCoords(pv), b = this.venueCoords(nv);
     if (!a || !b) return { minutes: 30, mode: "셔틀/택시", icon: "🚌", label: "베뉴 간 이동 — 여유 30분", maps: null };
     const km = this.havKm(a, b);
+    const walkMin = this.walkMinutes(km);
     let minutes, mode;
-    if (km < 0.8) { minutes = Math.round(km / 3.5 * 60) + 10; mode = "도보"; }
+    if (km < 0.8) { minutes = walkMin; mode = "도보"; }
     else if (km < 2) { minutes = Math.round(km / 18 * 60) + 15; mode = "셔틀/모노레일"; }
     else { minutes = Math.round(km / 22 * 60) + 15; mode = "셔틀/택시"; }
     const icon = mode === "도보" ? "🚶" : mode.includes("택시") ? "🚕" : "🚌";
     const label = `${pv} → ${nv} · 약 ${km.toFixed(1)}km · ${mode} ${minutes}분`;
-    const maps = `https://www.google.com/maps/dir/?api=1&origin=${a.lat},${a.lng}&destination=${b.lat},${b.lng}&travelmode=${mode === "도보" ? "walking" : "driving"}`;
-    return { minutes, mode, icon, label, maps, km };
+    const dir = (m) => `https://www.google.com/maps/dir/?api=1&origin=${a.lat},${a.lng}&destination=${b.lat},${b.lng}&travelmode=${m}`;
+    const maps = dir(mode === "도보" ? "walking" : "driving");
+    return { minutes, mode, icon, label, maps, km, walkMin, walkMaps: dir("walking") };
   },
   /* 이 날의 이동 구간: 각 일정마다 '그 전에 끝나는 일정 중 가장 늦게 끝나는 것'에서 출발한다고 봄 */
   legsFor(date, list) {
@@ -416,7 +422,7 @@ const Planner = {
         html += `<button class="route-leg st-${l.status}" data-leg="${li}">
           <span class="rl-ico">${l.tr.icon}</span>
           <span class="rl-txt"><b>${esc(l.tr.same ? "건물 내 이동" : `${shortVenue(l.a.it.venue)} → ${shortVenue(x.it.venue)}`)} · ${l.tr.minutes}분</b>
-          <span class="rl-sub">${esc(l.tr.same ? "같은 베뉴" : l.tr.mode)}${l.tr.km ? ` · ${l.tr.km.toFixed(1)}km` : ""} · ${this.hhmm(l.a.e)} 종료 후</span>
+          <span class="rl-sub">${esc(l.tr.same ? "같은 베뉴" : l.tr.mode)}${l.tr.km ? ` · ${l.tr.km.toFixed(1)}km` : ""}${l.tr.walkMin != null && l.tr.mode !== "도보" ? ` · 🚶 도보 ${l.tr.walkMin}분` : ""} · ${this.hhmm(l.a.e)} 종료 후</span>
           <span class="rl-st">${esc(this.legStatusText(l))}${l.status !== "bad" ? ` · ${this.hhmm(l.leaveBy)}까지 출발` : ""}</span>
           ${alts ? `<span class="rl-sub">💡 더 가까운 대체 세션 ${alts}개</span>` : ""}</span>
           <span class="chev">›</span></button>`;
@@ -464,6 +470,15 @@ const Planner = {
     const stLabel = { ok: "여유 있음", tight: "빠듯함", bad: "시간 부족" }[l.status];
     const sh = (window.APP_DATA.event_info.shuttle || {}).note;
     const fixes = l.status !== "ok" && b.kind === "session" ? this.routeFixes(l) : [];
+    // 이동 수단: 추천 수단 + 도보(시간·거리·사이 시간 안에 가능한지). 좌표 없는 장소는 예상 시간만
+    const tr = l.tr, walk = tr.walkMin != null, walkFits = walk && tr.walkMin <= l.gap;
+    const recTag = ` <span class="badge info">추천</span>`;
+    const modeRows = tr.same || !walk
+      ? `<div class="kv"><span>예상 이동 시간</span><b>${tr.minutes}분</b></div>`
+      : `${tr.mode === "도보" ? "" : `<div class="kv"><span>${tr.icon} ${esc(tr.mode)}${recTag}</span><b>약 ${tr.minutes}분</b></div>`}
+        <div class="kv"><span>🚶 도보${tr.mode === "도보" ? recTag : ""}<br>
+          <small class="${walkFits ? "st-text st-ok" : "muted"}">약 ${tr.walkMin}분 · 직선 ${tr.km.toFixed(1)}km · ${walkFits ? "사이 시간 안에 걸어갈 수 있어요" : `걸으면 ${tr.walkMin - l.gap}분 부족`}</small></span>
+          ${tr.mode === "도보" ? "" : `<a class="btn ghost small map-btn" href="${tr.walkMaps}" target="_blank" rel="noopener">도보 길찾기</a>`}</div>`;
     const tips = l.tr.same
       ? "같은 베뉴라도 건물이 넓어 층·구역 이동에 10–15분 걸릴 수 있어요. 방 번호를 미리 확인하세요."
       : l.tr.mode === "도보"
@@ -478,7 +493,7 @@ const Planner = {
           <div class="rc-stop"><span class="rc-dot end"></span><div><b>${this.hhmm(l.b.s)} 시작</b><div class="rc-title">${esc(b.title)}</div><div class="muted">📍 ${esc(b.venue)}</div></div></div>
         </div>
         <div class="kv"><span>사이 시간</span><b>${this.dur(l.gap)}</b></div>
-        <div class="kv"><span>예상 이동 시간</span><b>${l.tr.minutes}분</b></div>
+        ${modeRows}
         <div class="kv"><span>늦어도 출발</span><b>${this.hhmm(l.leaveBy)}</b></div>
         <div class="kv"><span>상태</span><b class="st-text st-${l.status}">${stLabel} · ${esc(this.legStatusText(l))}</b></div>
         <div class="${l.status === "bad" ? "danger-box" : "notice"}">${l.status === "bad" ? "⚠️ 앞 일정을 일찍 나오거나 다음 세션 시작에 늦을 수 있어요. " : "💡 "}${tips}</div>
@@ -503,11 +518,11 @@ const Planner = {
     const dismiss = () => { const ov = $("#modal-overlay"); if (ov) ov._dismiss(); };
 
     if (it.kind === "fixed") {
-      const base = allFixed().find((f) => f.id === it.id) || it;
+      const base = FIXED_EVENTS.find((f) => f.id === it.id) || it;
       const edited = !!(S().fixed_edits || {})[it.id];
       const kst = kstRange(date, it.start, it.end);
       openSheet({
-        title: it.keynote ? "🎤 키노트" : "📌 고정 일정",
+        title: "📌 고정 일정",
         body: `
           <div class="info-list">
             <span>🗓️</span><span>${esc(dayLabel(date))} · 현지 시간${kst ? ` <span class="muted">(🇰🇷 ${kst})</span>` : ""}</span>
@@ -786,7 +801,16 @@ const RouteInfo = {
         <span class="muted" style="font-size:12px;">${esc(v.address || "")}${this.taxiZone[v.name] ? `<br>택시 ${esc(this.taxiZone[v.name])}` : ""}</span></span>
         <a class="btn ghost small map-btn" target="_blank" rel="noopener"
            href="https://www.google.com/maps/search/?api=1&query=${v.lat},${v.lng}">📍 지도</a>
-      </div>`).join("");
+      </div>`).join("") + this.walkTableHTML(venues);
+  },
+  /* 베뉴 간 도보 거리 (가까운 순) */
+  walkTableHTML(venues) {
+    const pairs = [];
+    venues.forEach((a, i) => venues.slice(i + 1).forEach((b) => pairs.push([a, b, Planner.havKm(a, b)])));
+    pairs.sort((x, y) => x[2] - y[2]);
+    return `<h3>🚶 베뉴 간 도보 거리</h3>
+      <p class="muted" style="font-size:12px;margin:0 0 4px;">직선거리 기준 추정이에요. 실제로는 카지노 내부·육교를 지나 더 걸릴 수 있어요.</p>` +
+      pairs.map(([a, b, km]) => `<div class="kv"><span>${esc(shortVenue(a.name))} ↔ ${esc(shortVenue(b.name))}</span><b>약 ${Planner.walkMinutes(km)}분 · ${km.toFixed(1)}km</b></div>`).join("");
   },
   shuttleHTML() {
     const sh = window.APP_DATA.event_info.shuttle || {};
@@ -844,7 +868,7 @@ Views.planner = function () {
       </div>
     </div>
     <div class="card"><h3>고정 이벤트 표시</h3>
-      ${allFixed().filter((f) => f.date === plannerDay).map((f0) => {
+      ${FIXED_EVENTS.filter((f) => f.date === plannerDay).map((f0) => {
         const f = { ...f0, ...((S().fixed_edits || {})[f0.id] || {}) };
         return `<label class="check-item"><input type="checkbox" data-fx="${f.id}" ${S().fixed_off.includes(f.id) ? "" : "checked"}>
         <span>${esc(f.start)} ${esc(f.title)}${f.venue ? ` <span class="muted">· ${esc(f.venue)}</span>` : ""}</span></label>`;

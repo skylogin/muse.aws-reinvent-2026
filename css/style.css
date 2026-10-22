@@ -87,7 +87,8 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html { background: var(--header-bg); }
-html, body { margin: 0; padding: 0; }
+/* 앱 셸: 문서 자체는 스크롤하지 않음 → 헤더·하단 메뉴가 바운스·툴바 변화에 끌려가지 않음 (스크롤은 #views만) */
+html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; overscroll-behavior: none; }
 /* 모바일 앱처럼: 더블탭 확대·글자 자동 확대 막기 (핀치는 JS에서 막음) */
 html, body { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 
@@ -145,14 +146,15 @@ body {
   background: var(--bg); color: var(--text);
   font-size: 15px; line-height: 1.55;
   word-break: keep-all; overflow-wrap: break-word; /* 한글은 어절 단위로 줄바꿈 */
-  padding-bottom: env(safe-area-inset-bottom);
 }
-body.modal-open { overflow: hidden; }
-#app { max-width: 520px; margin: 0 auto; min-height: 100vh; background: var(--bg);
-  padding-bottom: calc(68px + env(safe-area-inset-bottom)); }
+body.modal-open #views { overflow: hidden; }
+#app { max-width: 520px; margin: 0 auto; height: 100vh; height: 100dvh; background: var(--bg);
+  display: flex; flex-direction: column; }
+#views { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto;
+  overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
 
 #app-header {
-  position: sticky; top: 0; z-index: 50;
+  flex: 0 0 auto; position: relative; z-index: 50;
   background: var(--header-bg); color: var(--header-text);
   border-bottom: 1px solid var(--line);
   padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
@@ -163,8 +165,7 @@ body.modal-open { overflow: hidden; }
 .header-clock #clock-vegas { display: block; font-weight: 600; font-size: 13px; }
 
 #tabbar {
-  position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
-  width: 100%; max-width: 520px; z-index: 50;
+  flex: 0 0 auto; position: relative; z-index: 50;
   display: flex; background: var(--tabbar-bg); border-top: 1px solid var(--line);
   padding-bottom: env(safe-area-inset-bottom);
 }
