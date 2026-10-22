@@ -41,6 +41,8 @@ function sessionIndex() {
   }
   return _searchIndex;
 }
+/* 세션 소개(abstract-*-chunk)는 첫 화면 뒤에 async로 붙음 → 다 붙으면(load) 인덱스를 다시 만듦 */
+window.addEventListener("load", () => { _searchIndex = null; });
 
 /* 카탈로그에 나온 AWS 서비스 [{name, n}] (세션 수 많은 순) */
 let _serviceList = null;
@@ -149,7 +151,8 @@ const Sessions = {
     }
   },
 
-  doFavAdd(id) {
+  /* 관심·내 일정에 넣기 (상태만 바꿈 — 저장·알림은 호출한 쪽에서) */
+  addToPlan(id) {
     const st = S();
     if (!st.favorites.includes(id)) st.favorites.push(id);
     const s = this.all().find((x) => x.session_id === id);
@@ -157,10 +160,28 @@ const Sessions = {
       st.daily_plan[s.date] = st.daily_plan[s.date] || [];
       if (!st.daily_plan[s.date].some((x) => x.session_id === id))
         st.daily_plan[s.date].push({ session_id: id, note: "" });
-      toast("내 일정에 담았어요 📅");
-    } else toast("관심 세션에 담았어요");
+    }
+    return s;
+  },
+  doFavAdd(id) {
+    const s = this.addToPlan(id);
+    toast(s && s.date ? "내 일정에 담았어요 📅" : "관심 세션에 담았어요");
     Store.save();
     Sessions.refreshAfterFav();
+  },
+  /* 여러 세션 한 번에 담기 — 이미 담은 일정과 시간이 겹치는 세션은 건너뜀 */
+  addMany(ids) {
+    let added = 0, skipped = 0;
+    ids.forEach((id) => {
+      if (S().favorites.includes(id)) return;
+      const s = this.all().find((x) => x.session_id === id);
+      if (!s) return;
+      if (this.findConflict(s)) { skipped++; return; }
+      this.addToPlan(id);
+      added++;
+    });
+    if (added) { Store.save(); Sessions.refreshAfterFav(); }
+    return { added, skipped };
   },
 
   findConflict(s) {
@@ -388,7 +409,7 @@ Sessions.renderResults = function () {
     html = `
       <div class="ss-bar">
         <span class="ss-bar-l">
-          <span class="muted">${list.length.toLocaleString("ko-KR")}개 세션${activeFilterCount ? ` · 필터 ${activeFilterCount}개` : ""}</span>
+          <span class="muted">${list.length.toLocaleString("ko-KR")}개 세션${activeFilterCount ? ` · 필터 ${activeFilterCount}개` : ""}${dataAsOf() ? ` · ${dataAsOf()}` : ""}</span>
           <button class="chip" id="ss-sort">↕️ ${SORT_LABEL[Sessions.sort] || "시간순"}</button>
         </span>
         <span class="ss-bar-r">

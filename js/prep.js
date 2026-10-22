@@ -195,6 +195,7 @@ Views.prep = function () {
       <h4 style="margin:8px 0 4px;font-size:14px;">호텔 ${missing(h.name)}</h4>
       <div class="kv"><span>호텔명</span><b>${esc(h.name) || "-"}</b></div>
       <div class="kv"><span>체크인 → 아웃</span><b>${h.check_in ? esc(h.check_in) + " → " + esc(h.check_out) : "-"}</b></div>
+      <div class="kv"><span>가까운 베뉴</span><b>${esc(h.near_venue) || "-"}</b></div>
       <button class="btn ghost block" id="prep-edit-trip">출장 정보 입력/수정</button>
     </div>`;
 
@@ -299,6 +300,9 @@ const Prep = {
       <div><label class="field">도착 (현지시간)</label>${inp("tr-ib-arr", f.inbound.arr_time, "2026-12-06 16:00", "text")}</div></div>
       <h3>호텔</h3>
       <label class="field">호텔명</label>${inp("tr-ht-name", h.name, "예: The Venetian")}
+      <label class="field" for="tr-ht-near">숙소에서 가까운 베뉴 <span class="muted">(아침·저녁 이동 계산용)</span></label>
+      <select id="tr-ht-near">${[""].concat([...new Set(allSessions().map((s) => s.venue).filter(Boolean))].sort())
+        .map((v) => `<option value="${esc(v)}"${(h.near_venue || "") === v ? " selected" : ""}>${v ? esc(v) : "선택 안 함"}</option>`).join("")}</select>
       <div class="row"><div><label class="field">체크인</label>${inp("tr-ht-in", h.check_in, "2026-11-29", "date")}</div>
       <div><label class="field">체크아웃</label>${inp("tr-ht-out", h.check_out, "2026-12-05", "date")}</div></div>
       <label class="field">주소</label>${inp("tr-ht-addr", h.address, "선택")}
@@ -308,7 +312,7 @@ const Prep = {
       const g = (id) => $("#" + id).value.trim();
       f.outbound = { airline: g("tr-ob-al"), flight_no: g("tr-ob-no"), dep_time: g("tr-ob-dep"), arr_time: g("tr-ob-arr"), terminal: "" };
       f.inbound = { airline: g("tr-ib-al"), flight_no: g("tr-ib-no"), dep_time: g("tr-ib-dep"), arr_time: g("tr-ib-arr"), terminal: "" };
-      t.hotel = { name: g("tr-ht-name"), check_in: g("tr-ht-in"), check_out: g("tr-ht-out"), address: g("tr-ht-addr") };
+      t.hotel = { name: g("tr-ht-name"), check_in: g("tr-ht-in"), check_out: g("tr-ht-out"), address: g("tr-ht-addr"), near_venue: g("tr-ht-near") };
       Store.save(); closeModal(); Views.prep(); toast("출장 정보를 저장했어요");
     };
     $("#tr-cancel").onclick = closeModal;

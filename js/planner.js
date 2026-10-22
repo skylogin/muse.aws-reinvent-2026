@@ -394,6 +394,26 @@ const Planner = {
   },
 
   /* ---- 이 날의 동선 (정류장 목록) ---- */
+  /* 숙소 ↔ 첫·마지막 일정: 출장 정보의 '가까운 베뉴' 기준, 숙박 기간 안에서만
+     (체크인 날부터 출발 구간, 체크아웃 전날까지 귀가 구간) */
+  hotelLegs(date, list) {
+    const h = S().trip.hotel || {}, hv = h.near_venue;
+    if (!hv || !list.length) return {};
+    if ((h.check_in && date < h.check_in) || (h.check_out && date > h.check_out)) return {};
+    const first = list[0], last = list.reduce((a, b) => (b.e > a.e ? b : a));
+    const out = { venue: hv, first, last, start: this.travelBetween({ venue: hv }, first.it) };
+    if (!h.check_out || date < h.check_out) out.end = this.travelBetween(last.it, { venue: hv });
+    return out;
+  },
+  hotelRowHTML(tr, label, when) {
+    if (!tr) return "";
+    return `<div class="route-leg hotel">
+      <span class="rl-ico">🏨</span>
+      <span class="rl-txt"><b>${esc(label)} · ${tr.minutes}분</b>
+        <span class="rl-sub">${esc(tr.same ? "같은 베뉴" : tr.mode)}${tr.km ? ` · ${tr.km.toFixed(1)}km` : ""}${tr.walkMin != null && tr.mode !== "도보" ? ` · 🚶 도보 ${tr.walkMin}분` : ""}</span>
+        <span class="rl-st">${esc(when)}</span></span>
+    </div>`;
+  },
   routeHTML(date) {
     const list = this.timedFor(date);
     if (!list.length) return "";
@@ -401,7 +421,9 @@ const Planner = {
     const conflicts = this.conflictsFor(date, list);
     const legInto = new Map(legs.map((l, i) => [l.b, i]));
     const dark = document.documentElement.dataset.theme === "dark";
-    let html = "";
+    const hl = this.hotelLegs(date, list), home = hl.venue ? `숙소(${shortVenue(hl.venue)} 근처)` : "";
+    let html = hl.start ? this.hotelRowHTML(hl.start, `${home} → ${shortVenue(hl.first.it.venue)}`,
+      `${this.hhmm(hl.first.s - hl.start.minutes)}까지 숙소에서 출발`) : "";
     list.forEach((x) => {
       const li = legInto.get(x);
       if (li != null) {
@@ -437,6 +459,8 @@ const Planner = {
           ${clash ? `<span class="badge danger" style="margin-top:3px;">⚠️ 다른 세션과 시간 겹침</span>` : ""}</span>
       </div>`;
     });
+    if (hl.end) html += this.hotelRowHTML(hl.end, `${shortVenue(hl.last.it.venue)} → ${home}`,
+      `${this.hhmm(hl.last.e)} 종료 후 · ${this.hhmm(hl.last.e + hl.end.minutes)}쯤 도착`);
     return `${this.lunchWarning(list) ? `<div class="warn-box">🍽️ 11–14시 사이에 30분 이상 빈 시간이 없어요. 점심을 거르기 쉬우니 스낵을 챙기거나 일정을 하나 조정해 보세요.</div>` : ""}
       <div class="route">${html}</div>`;
   },
@@ -893,7 +917,6 @@ Views.planner = function () {
   $$("#view-planner [data-pitem]").forEach((it) => {
     const open = () => { const id = it.dataset.pitem; if (id) Planner.openItem(id, plannerDay); };
     it.addEventListener("click", open);
-    it.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
   });
   $$("#view-planner [data-leg]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); Planner.openTravel(plannerDay, Number(b.dataset.leg)); });
   $$("#view-planner [data-peer]").forEach((b) => b.onclick = () => {

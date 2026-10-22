@@ -39,12 +39,14 @@ const TransferUI = {
       <div class="notice">⚠️ 이 코드에는 내 일정·지출 등이 들어 있어요. 다른 사람에게 노출되지 않게 주의하세요.</div>
       <button class="btn ghost block" id="tf-close">닫기</button>`);
     $("#tf-copy").onclick = async () => {
-      try { await navigator.clipboard.writeText(code); toast("코드를 복사했어요"); }
-      catch (e) { $("#tf-code").select(); document.execCommand("copy"); toast("코드를 복사했어요"); }
+      try { await navigator.clipboard.writeText(code); }
+      catch (e) { $("#tf-code").select(); document.execCommand("copy"); }
+      this.markBackup();
+      toast("코드를 복사했어요");
     };
     $("#tf-share").onclick = async () => {
       if (navigator.share) {
-        try { await navigator.share({ title: "re:Invent 출장 앱 데이터", text: code }); } catch (e) { /* 취소 */ }
+        try { await navigator.share({ title: "re:Invent 출장 앱 데이터", text: code }); this.markBackup(); } catch (e) { /* 취소 */ }
       } else toast("이 기기에서는 공유하기를 지원하지 않아요. 코드 복사를 이용하세요.");
     };
     $("#tf-file").onclick = () => this.exportFile();
@@ -88,6 +90,14 @@ const TransferUI = {
 
   exportFile() {
     download(`reinvent2026-backup-${vegasDateStr()}.json`, JSON.stringify(portableState()), "application/json");
+    this.markBackup();
     toast("백업 파일을 저장했어요");
+  },
+
+  /* 백업 시각 기록 → 설정의 '마지막 백업'에 표시 */
+  markBackup() {
+    S().last_backup_at = Date.now();
+    Store.save();
+    if (currentTab === "settings") Views.settings();
   }
 };

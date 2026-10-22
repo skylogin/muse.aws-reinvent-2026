@@ -26,6 +26,12 @@
     var mc = document.querySelector('meta[name="theme-color"]'); // 스플래시 때부터 상태바 색 맞춤
     if (mc) mc.content = (t === "dark") ? "#16233f" : "#ffffff";
   } catch (e) {}
+  /* 스플래시는 하루 첫 실행에만 — 행사 중 자주 열 때 기다리지 않게 */
+  try {
+    var day = new Date().toDateString();
+    if (localStorage.getItem("reinvent2026.splash") === day) document.documentElement.dataset.splash = "skip";
+    else localStorage.setItem("reinvent2026.splash", day);
+  } catch (e) {}
 })();
 </script>
 </head>
@@ -106,35 +112,35 @@
 <script src="js/data-chunk-17.js"></script>
 <script src="js/data-chunk-18.js"></script>
 <!-- DATA-CHUNKS:END -->
-<script src="js/abstract-chunk-00.js"></script>
-<script src="js/abstract-chunk-01.js"></script>
-<script src="js/abstract-chunk-02.js"></script>
-<script src="js/abstract-chunk-03.js"></script>
-<script src="js/abstract-chunk-04.js"></script>
-<script src="js/abstract-chunk-05.js"></script>
-<script src="js/abstract-chunk-06.js"></script>
-<script src="js/abstract-chunk-07.js"></script>
-<script src="js/abstract-chunk-08.js"></script>
-<script src="js/abstract-chunk-09.js"></script>
-<script src="js/abstract-chunk-10.js"></script>
-<script src="js/abstract-chunk-11.js"></script>
-<script src="js/abstract-chunk-12.js"></script>
-<script src="js/abstract-chunk-13.js"></script>
-<script src="js/abstract-chunk-14.js"></script>
-<script src="js/abstract-chunk-15.js"></script>
-<script src="js/abstract-chunk-16.js"></script>
-<script src="js/abstract-chunk-17.js"></script>
-<script src="js/abstract-chunk-18.js"></script>
-<script src="js/abstract-ko-chunk-00.js"></script>
-<script src="js/abstract-ko-chunk-01.js"></script>
-<script src="js/abstract-ko-chunk-02.js"></script>
-<script src="js/abstract-ko-chunk-03.js"></script>
-<script src="js/abstract-ko-chunk-04.js"></script>
-<script src="js/abstract-ko-chunk-05.js"></script>
-<script src="js/abstract-ko-chunk-06.js"></script>
-<script src="js/abstract-ko-chunk-07.js"></script>
-<script src="js/abstract-ko-chunk-08.js"></script>
-<script src="js/abstract-ko-chunk-09.js"></script>
+<script src="js/abstract-chunk-00.js" async></script>
+<script src="js/abstract-chunk-01.js" async></script>
+<script src="js/abstract-chunk-02.js" async></script>
+<script src="js/abstract-chunk-03.js" async></script>
+<script src="js/abstract-chunk-04.js" async></script>
+<script src="js/abstract-chunk-05.js" async></script>
+<script src="js/abstract-chunk-06.js" async></script>
+<script src="js/abstract-chunk-07.js" async></script>
+<script src="js/abstract-chunk-08.js" async></script>
+<script src="js/abstract-chunk-09.js" async></script>
+<script src="js/abstract-chunk-10.js" async></script>
+<script src="js/abstract-chunk-11.js" async></script>
+<script src="js/abstract-chunk-12.js" async></script>
+<script src="js/abstract-chunk-13.js" async></script>
+<script src="js/abstract-chunk-14.js" async></script>
+<script src="js/abstract-chunk-15.js" async></script>
+<script src="js/abstract-chunk-16.js" async></script>
+<script src="js/abstract-chunk-17.js" async></script>
+<script src="js/abstract-chunk-18.js" async></script>
+<script src="js/abstract-ko-chunk-00.js" async></script>
+<script src="js/abstract-ko-chunk-01.js" async></script>
+<script src="js/abstract-ko-chunk-02.js" async></script>
+<script src="js/abstract-ko-chunk-03.js" async></script>
+<script src="js/abstract-ko-chunk-04.js" async></script>
+<script src="js/abstract-ko-chunk-05.js" async></script>
+<script src="js/abstract-ko-chunk-06.js" async></script>
+<script src="js/abstract-ko-chunk-07.js" async></script>
+<script src="js/abstract-ko-chunk-08.js" async></script>
+<script src="js/abstract-ko-chunk-09.js" async></script>
 <script src="js/app.js"></script>
 <script src="js/sessions.js"></script>
 <script src="js/planner.js"></script>
@@ -146,12 +152,5 @@
 <script src="js/vendor/qrcode.js"></script>
 <script src="js/share.js"></script>
 <script src="js/expo.js"></script>
-<script>
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
-  });
-}
-</script>
 </body>
 </html>

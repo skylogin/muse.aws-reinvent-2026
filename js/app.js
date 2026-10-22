@@ -99,6 +99,16 @@ document.addEventListener("keydown", (e) => {
   if (rp) rp.classList.remove("open");
 });
 
+/* role="button"인 div·span을 Enter·Space로 열기 (키보드·스크린리더) */
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const el = e.target;
+  if (!el || !el.getAttribute || el.getAttribute("role") !== "button") return;
+  if (/^(BUTTON|A|INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return; // 기본 동작이 있는 요소
+  e.preventDefault();
+  el.click();
+});
+
 /* 확대 막기: 뷰포트(user-scalable=no) + CSS touch-action으로 더블탭 확대 차단,
    iOS Safari는 뷰포트 설정을 무시하므로 핀치 제스처를 직접 막음 */
 ["gesturestart", "gesturechange", "gestureend"].forEach((t) =>
@@ -183,7 +193,7 @@ function defaultState() {
         outbound: { airline: "", flight_no: "", dep_time: "", arr_time: "", terminal: "" },
         inbound: { airline: "", flight_no: "", dep_time: "", arr_time: "", terminal: "" }
       },
-      hotel: { name: "", check_in: "", check_out: "", address: "" }
+      hotel: { name: "", check_in: "", check_out: "", address: "", near_venue: "" } // near_venue: 숙소에서 가까운 베뉴 (동선 계산용)
     },
     expenses: [],            // {id, date, owner, category, desc, amount_usd, amount_krw, receipt}
     checklist: null,         // null -> defaults from PREP
@@ -199,7 +209,8 @@ function defaultState() {
     peers: [],         // 받은 동료 일정 [{id, name, days, visible, color, at}]
     show_kr_hours: true, // 시간표에 한국 업무시간 표시
     news: [],           // 신규 발표 메모 [{id, title, q, at}]
-    expo_booths: []     // Expo 부스 스탬프 [{id, name, note, visited, visited_at}]
+    expo_booths: [],    // Expo 부스 스탬프 [{id, name, note, visited, visited_at}]
+    last_backup_at: null // 마지막 백업 시각 (파일 저장·코드 복사·공유)
   };
 }
 const Store = {
@@ -233,6 +244,13 @@ function keynoteInfo() { return (window.APP_DATA.event_info && window.APP_DATA.e
 function keynoteSessions() {
   return allSessions().filter((s) => s.session_type === "keynote")
     .sort((a, b) => (a.date + a.start_time).localeCompare(b.date + b.start_time));
+}
+/* 세션 데이터 기준일 (한국 날짜): "10/21 기준" — 데이터 생성 시각(meta.built_at) */
+function dataAsOf() {
+  const at = (window.APP_DATA.meta || {}).built_at;
+  if (!at) return "";
+  const p = tzParts("Asia/Seoul", new Date(at));
+  return `${Number(p.month)}/${Number(p.day)} 기준`;
 }
 
 /* ---------- tab router ---------- */
@@ -654,6 +672,10 @@ Views.home = function () {
             <div class="sg-act"><button class="sg-btn${on ? " on" : " primary"}" data-kn-fav="${esc(s.session_id)}">${on ? "담김 ✓" : "담기"}</button></div>
           </div>`;
         }).join("") +
+          (() => {
+            const left = kn.filter((s) => !st.favorites.includes(s.session_id)).length;
+            return left > 1 ? `<button class="btn ghost block small" id="kn-all">키노트 ${left}개 모두 담기</button>` : "";
+          })() +
           `<p class="muted" style="font-size:12px;margin:6px 0 0;">📍 ${esc(places)} · 담으면 내 일정 시간표에 들어가요.${k.note ? " " + esc(k.note) : ""}</p>`
         : `<p class="muted" style="font-size:13px;margin:0;">공식 일정·연사는 아직 공개 전이에요.</p>`}
         ${k.korean_interpretation ? `<div class="notice" style="margin-bottom:0;">🇰🇷 ${esc(k.korean_interpretation_note || "키노트 한국어 실시간 통역 제공")}${k.livestream ? ` · ${esc(k.livestream)}` : ""}</div>` : ""}
@@ -676,6 +698,12 @@ Views.home = function () {
   $$("#home-rec-list [data-rec-add]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); Sessions.toggleFav(b.dataset.recAdd); Views.home(); });
   $$("#view-home [data-kn-open]").forEach((el) => el.onclick = () => Sessions.openDetail(el.dataset.knOpen));
   $$("#view-home [data-kn-fav]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); Sessions.toggleFav(b.dataset.knFav); Views.home(); });
+  const knAll = $("#kn-all");
+  if (knAll) knAll.onclick = () => {
+    const r = Sessions.addMany(keynoteSessions().map((s) => s.session_id));
+    toast(`키노트 ${r.added}개를 담았어요${r.skipped ? ` · ${r.skipped}개는 시간이 겹쳐 건너뛰었어요` : ""}`);
+    Views.home();
+  };
   Weather.refresh();
 };
 
@@ -792,14 +820,42 @@ const Packing = {  defaults() {
   }
 };
 
+/* ---------- service worker: 오프라인 캐시 + 새 버전 알림 ---------- */
+function registerSW() {
+  if (!("serviceWorker" in navigator)) return;
+  const hadController = !!navigator.serviceWorker.controller; // 첫 설치 때는 알리지 않음
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadController) showUpdateBar(); });
+  navigator.serviceWorker.register("sw.js").then((reg) => {
+    // 홈 화면 앱은 오래 켜 두므로, 다시 볼 때마다 새 버전 확인
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") reg.update().catch(() => {});
+    });
+  }).catch(() => {});
+}
+function showUpdateBar() {
+  if ($("#update-bar")) return;
+  const bar = document.createElement("div");
+  bar.id = "update-bar";
+  bar.setAttribute("role", "status");
+  bar.innerHTML = `<span>새 버전이 있어요</span><button class="btn small" id="update-reload">새로고침</button>`;
+  document.body.appendChild(bar);
+  $("#update-reload").onclick = () => location.reload();
+}
+
 /* ---------- boot ---------- */
+window.addEventListener("load", registerSW);
 document.addEventListener("DOMContentLoaded", () => {
-  // Splash screen animation
+  // 스플래시: 하루 첫 실행에만 (index.html 첫 페인트 스크립트가 data-splash="skip"으로 표시)
   const splash = $("#splash");
-  if (splash) {
+  if (splash && document.documentElement.dataset.splash === "skip") splash.remove();
+  else if (splash) {
     setTimeout(() => splash.classList.add("zoom"), 1700);
     setTimeout(() => splash.classList.add("hide"), 2100);
     setTimeout(() => splash.remove(), 2600);
+  }
+  // 저장소 보존 요청: 브라우저가 공간을 정리할 때 일정·정산 데이터를 지우지 않게
+  if (navigator.storage && navigator.storage.persist) {
+    navigator.storage.persisted().then((p) => p || navigator.storage.persist()).catch(() => {});
   }
   Store.load();
   applyTheme();

@@ -13,6 +13,11 @@ Views.settings = function () {
     </div>
     <div class="card"><h3>📲 기기·백업</h3>
       <p class="muted" style="font-size:13px;">이 앱은 서버 없이 이 기기에만 저장됩니다.</p>
+      ${(() => {
+        const at = st.last_backup_at, days = at ? Math.floor((Date.now() - at) / 86400000) : null;
+        const label = at == null ? "아직 백업하지 않았어요" : days === 0 ? "오늘" : `${days}일 전`;
+        return `<div class="kv"><span>마지막 백업</span><b class="${at == null || days >= 3 ? "st-text st-tight" : ""}">${label}</b></div>`;
+      })()}
       <div class="row">
         <button class="btn ghost small" id="set-transfer">📤 다른 기기로 옮기기</button>
         <button class="btn ghost small" id="set-import">📥 가져오기</button>
@@ -42,6 +47,7 @@ Views.settings = function () {
     </div>
     <div class="card"><h3>ℹ️ 앱 정보</h3>
       <div class="kv"><span>버전</span><b>v1</b></div>
+      <div class="kv"><span>세션 데이터</span><b>${esc(dataAsOf())} · ${allSessions().length.toLocaleString("ko-KR")}개</b></div>
       <div class="kv"><span>데이터 보관</span><b>이 기기(localStorage)</b></div>
     </div>`;
 
