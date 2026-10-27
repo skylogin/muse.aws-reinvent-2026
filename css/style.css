@@ -154,6 +154,9 @@ body.modal-open #views { overflow: hidden; }
 #views { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto;
   overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
 
+/* iOS 26+ WebKit은 화면 위 가장자리에 흐림(scroll pocket)을 그린다. 위쪽에 폭을 다 채운 단색 고정 요소가 있으면
+   흐림 대신 그 색을 쓴다. 헤더는 고정 요소가 아니므로 헤더 색의 얇은 고정 띠를 둔다 (높이 6px 이상이어야 감지됨) */
+#top-edge { position: fixed; top: 0; left: 0; right: 0; height: 6px; z-index: 60; background: var(--header-bg); pointer-events: none; }
 #app-header {
   flex: 0 0 auto; position: relative; z-index: 50;
   background: var(--header-bg); color: var(--header-text);
