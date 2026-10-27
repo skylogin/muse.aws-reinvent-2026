@@ -734,7 +734,7 @@ table.plain th { color: var(--muted); font-weight: 600; font-size: 12px; }
 
 /* ---------- text scale · hit targets · offline ----------
    확대는 화면의 자식에만 건다: 고정 위치 FAB가 확대된 조상 안에 있으면 위치가 어긋나 탭바와 겹친다 */
-.view > :not(.fab):not(#ss-results), #ss-results > :not(.fab), #modal-root .bs-head, #modal-root .bs-body, #modal-root .bs-actions, #modal-root .overlay.center .sheet > *,
+.view > :not(.fab):not(#ss-results), .view > #ss-results > :not(.fab), #modal-root .bs-head, #modal-root .bs-body, #modal-root .bs-actions, #modal-root .overlay.center .sheet > *,
 .drawer-body, .layer-body, .report-screen-body, #app-header, #tabbar button span:last-child { zoom: var(--text-scale, 1); }
 .fav-btn, .sg-btn, .drawer-close { min-width: 44px; min-height: 44px; }
 .chip { min-height: 36px; }
@@ -806,3 +806,14 @@ html[data-size="expanded"] .split { grid-template-columns: minmax(360px, 2fr) 3f
 .wx-ico { font-size: 30px; line-height: 1; }
 .wx-t { font-size: 20px; font-weight: 800; }
 .wx-range { font-size: 11px; opacity: .8; }
+
+/* ---------- sessions: 적용된 필터 · 최근 검색 · 오른쪽 칸 ---------- */
+.af-row, .rq-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 10px; }
+.rq-row { margin-top: 8px; }
+.rq-row .link-btn { padding: 4px 6px; font-size: 13px; }
+.session-card.selected { box-shadow: 0 0 0 2px var(--select-border); }
+#sd-pane { display: flex; flex-direction: column; padding: 0; }
+#sd-pane .pane-body { flex: 1 1 auto; overflow-y: auto; min-height: 0; padding: 14px 18px; }
+#sd-pane .pane-actions { flex: 0 0 auto; display: flex; gap: 8px; padding: 10px 18px; border-top: 1px solid var(--line); background: var(--bg); }
+#sd-pane .pane-actions .btn { flex: 1; margin: 0; }
+#sd-pane .split-empty { padding: 0 18px; }

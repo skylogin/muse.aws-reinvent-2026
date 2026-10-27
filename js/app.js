@@ -201,6 +201,7 @@ function defaultState() {
     fx_rate: 1450,
     theme: "system",         // system | light | dark
     text_scale: 1,           // 글자 크기 1 | 1.12 | 1.25 (핀치 확대를 막는 대신)
+    recent_queries: [],      // 세션 최근 검색어 (최대 8개)
     notify: { on: false, minutes: 15 },  // 관심 세션 시작 알림 (앱이 켜져 있을 때만 동작)
     weather_cache: null,
     depart_done: {},   // 출발 전 할 일 완료 상태
@@ -259,7 +260,8 @@ function switchTab(name) {
   if (!Nav.ROUTES.includes(name)) name = "home";
   const views = $("#views");
   if (name !== currentTab && Views[currentTab] && Views[currentTab].onLeave) Views[currentTab].onLeave();
-  Nav.scroll[currentTab] = views.scrollTop;
+  const scroller = (tab) => $("#view-" + tab + " .split-list") || views; // 2분할 화면은 목록 칸이 스크롤됨
+  Nav.scroll[currentTab] = scroller(currentTab).scrollTop;
   currentTab = name;
   if (name === "planner" && typeof plannerManual !== "undefined") plannerManual = false; // 들어올 때마다 현지 날짜로
   $$("#tabbar button").forEach((b) => {
@@ -271,7 +273,7 @@ function switchTab(name) {
   const gear = $("#hdr-settings");
   if (gear) gear.classList.toggle("hidden", name !== "home");
   if (Views[name]) Views[name]();
-  views.scrollTop = Nav.scroll[name] || 0;
+  scroller(name).scrollTop = Nav.scroll[name] || 0;
   Nav.sync();
 }
 

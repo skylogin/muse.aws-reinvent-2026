@@ -68,13 +68,26 @@ const Sessions = {
   venueGroup: false, // 베뉴별 모아보기
   sort: "time",      // time | recommended | level
   limit: SESSION_PAGE,
+  soon: false,       // ⏰ 곧 시작 (오늘, 60분 안에 시작) — 행사 날에만 보임
+  selected: null,    // 넓은 화면 오른쪽 칸에 보이는 세션
 
   all() { return allSessions(); },
   pending() { return sessionsPending(); },
 
+  isEventDay() { const t = vegasDateStr(); return this.all().some((s) => s.date === t); },
+  soonActive() { return this.soon && this.isEventDay(); },
+  activeCount() { return Object.values(this.f).filter((v) => v).length + (this.soonActive() ? 1 : 0); },
+
   filtered() {
     const q = this.q.trim().toLowerCase(), f = this.f;
+    const soon = this.soonActive();
+    const today = vegasDateStr(), vp = vegasParts(), nowMin = (+vp.hour) * 60 + (+vp.minute);
     return this.all().filter((s) => {
+      if (soon) {
+        if (s.date !== today) return false;
+        const d = Planner.toMin(s.start_time) - nowMin;
+        if (!(d >= 0 && d <= 60)) return false;
+      }
       if (f.date && s.date !== f.date) return false;
       if (f.venue && s.venue !== f.venue) return false;
       if (f.type && s.session_type !== f.type) return false;
@@ -92,7 +105,7 @@ const Sessions = {
 
   /* 정렬: 시간순(기본) · 추천순(관심 토픽·서비스 점수) · 레벨순 */
   sortList(list) {
-    const by = this.sort || "time";
+    const by = this.soonActive() ? "time" : (this.sort || "time");
     const key = (s) => String((s.date || "") + (s.start_time || ""));
     const arr = list.slice();
     if (by === "recommended") {
@@ -263,12 +276,11 @@ const Sessions = {
     $$(".sd-summary p.clamp3", root).forEach((p) => p.onclick = () => p.classList.toggle("open"));
   },
 
-  /* 세션 상세: 하단 시트 — 핵심 정보 카드 → 한국어 요약 → 연사·태그·다른 회차 */
-  openDetail(id) {
-    const s = this.all().find((x) => x.session_id === id);
-    if (!s) return;
+  /* 세션 상세 — 좁은 화면: 하단 시트 / 넓은 화면의 세션 탭: 오른쪽 칸 (#sd-pane)
+     핵심 정보 카드 → 한국어 요약 → 연사·태그·다른 회차 → 내 노트 */
+  detailBodyHTML(s) {
     const room = roomLabel(s);
-    const reps = Suggest.repeats(id);
+    const reps = Suggest.repeats(s.session_id);
     const kst = kstRange(s.date, s.start_time, s.end_time);
     const s0 = Planner.toMin(s.start_time), e0 = Planner.toMin(s.end_time);
     const len = s0 != null && e0 > s0 ? Planner.dur(e0 - s0) : "";
@@ -278,9 +290,7 @@ const Sessions = {
     const spk = (s.speakers || []).map((x) => { const p = String(x).split(" · "); return { name: p[0], role: p.slice(1).join(" · ") }; });
     const initials = (n) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
     const catalog = s.catalog_url || APP_DATA.catalog_url;
-    const sheetOv = openSheet({
-      title: "세션 소개",
-      body: `
+    return `
         <div class="sd-badges">
           <span class="badge info">${esc(typeKo(s.session_type))}</span>
           ${lvl ? `<span class="badge">${esc(lvl)}</span>` : ""}
@@ -311,85 +321,121 @@ const Sessions = {
         <div class="sheet-links" style="margin-top:12px;">
           ${catalog ? `<a class="link-btn" href="${esc(catalog)}" target="_blank" rel="noopener">공식 카탈로그 ›</a>` : ""}
           <a class="link-btn" href="https://registration.awsevents.com/" target="_blank" rel="noopener">AWS Events에서 예약 ›</a>
-        </div>`,
-      actions: `<button class="btn ghost" id="d-close">닫기</button><button class="btn" id="d-fav"></button>`
-    });
+        </div>`;
+  },
+  detailActionsHTML(mode) {
+    return mode === "pane" ? `<button class="btn" id="d-fav"></button>`
+      : `<button class="btn ghost" id="d-close">닫기</button><button class="btn" id="d-fav"></button>`;
+  },
+  /* root: 시트 또는 오른쪽 칸. 노트는 별점을 누를 때·메모를 쓰는 동안(0.4초 뒤) 바로 저장 — 어떻게 닫아도 잃지 않음 */
+  bindDetail(root, s, mode) {
+    const id = s.session_id;
+    const q = (sel) => $(sel, root);
     // 담기 버튼과 예약 상태는 관심 여부에 따라 그 자리에서 바뀜
     const paint = () => {
       const fav = S().favorites.includes(id);
-      const b = $("#d-fav");
+      const b = q("#d-fav");
       if (!b) return;
       b.textContent = fav ? "⭐ 내 일정에 담김" : "☆ 내 일정에 담기";
       b.classList.toggle("ghost-on", fav);
       b.setAttribute("aria-pressed", fav);
       const res = (S().reservations[id] || {}).status || "none";
-      $("#d-res-wrap").innerHTML = fav ? `<label class="field" style="display:block;margin-top:12px;">예약 상태</label>
+      q("#d-res-wrap").innerHTML = fav ? `<label class="field" style="display:block;margin-top:12px;">예약 상태</label>
         <div class="seg" id="d-res">${["reserved", "waitlist", "none"].map((v) => `<button class="seg-btn res-${v}${res === v ? " on" : ""}" data-v="${v}">${RES_LABEL[v]}</button>`).join("")}</div>` : "";
-      $$("#d-res .seg-btn").forEach((c) => c.onclick = () => {
-        $$("#d-res .seg-btn").forEach((x) => x.classList.toggle("on", x === c));
+      $$("#d-res .seg-btn", root).forEach((c) => c.onclick = () => {
+        $$("#d-res .seg-btn", root).forEach((x) => x.classList.toggle("on", x === c));
         this.setReservation(id, c.dataset.v);
         this.renderResults();
       });
     };
     paint();
-    $("#d-fav").onclick = () => {
+    q("#d-fav").onclick = () => {
       const fav = S().favorites.includes(id);
-      if (!fav && this.findConflict(s)) { closeModal(); this.toggleFav(id); return; } // 시간 겹침 확인 창으로
+      if (!fav && this.findConflict(s)) { if (mode === "sheet") closeModal(); this.toggleFav(id); return; } // 시간 겹침 확인 창으로
       this.toggleFav(id);
       paint();
     };
     // 내 노트 (별점+메모) — planner와 같은 session_notes 저장소
     const sn = S().session_notes[id] || { rating: 0, memo: "" };
-    let dRating = sn.rating || 0;
-    const dPaintStars = () => {
-      $$("#d-stars span").forEach((x) => x.classList.toggle("on", Number(x.dataset.s) <= dRating));
-    };
-    dPaintStars();
-    $$("#d-stars span").forEach((sp) => {
-      sp.addEventListener("click", (e) => { e.preventDefault(); dRating = Number(sp.dataset.s) === dRating ? 0 : Number(sp.dataset.s); dPaintStars(); });
-    });
-    $("#d-memo").value = sn.memo || "";
-    const dSaveNote = () => {
-      const memo = $("#d-memo").value.trim();
-      if (dRating || memo) S().session_notes[id] = { rating: dRating, memo, updated_at: new Date().toISOString() };
+    let rating = sn.rating || 0, t = null;
+    const memoEl = q("#d-memo");
+    const save = () => {
+      clearTimeout(t);
+      const memo = memoEl.value.trim();
+      if (rating || memo) S().session_notes[id] = { rating, memo, updated_at: new Date().toISOString() };
       else delete S().session_notes[id];
       Store.save();
     };
-    $("#d-memo").addEventListener("change", dSaveNote);
-    $("#d-close").onclick = () => { dSaveNote(); $("#modal-overlay")._dismiss(); };
-    // 배경 탭·스와이프로 닫을 때도 노트 저장
-    if (sheetOv && sheetOv._dismiss) {
-      const _d = sheetOv._dismiss;
-      sheetOv._dismiss = () => { dSaveNote(); _d(); };
-    }
-    this.bindSummary($(".bs-body"));
-    $$("#d-topics [data-topic], #d-topics [data-service]").forEach((c) => c.onclick = () => {
-      closeModal();
+    const paintStars = () => $$("#d-stars span", root).forEach((x) => x.classList.toggle("on", Number(x.dataset.s) <= rating));
+    paintStars();
+    $$("#d-stars span", root).forEach((sp) => sp.addEventListener("click", (e) => {
+      e.preventDefault(); rating = Number(sp.dataset.s) === rating ? 0 : Number(sp.dataset.s); paintStars(); save();
+    }));
+    memoEl.value = sn.memo || "";
+    memoEl.addEventListener("input", () => { clearTimeout(t); t = setTimeout(save, 400); });
+    memoEl.addEventListener("change", save);
+    this.bindSummary(root);
+    $$("#d-topics [data-topic], #d-topics [data-service]", root).forEach((c) => c.onclick = () => {
       const key = c.dataset.topic ? "topic" : "service", v = c.dataset.topic || c.dataset.service;
+      if (mode === "sheet") closeModal();
       Sessions.f[key] = v;
       Sessions.limit = SESSION_PAGE;
-      if (currentTab !== "sessions") switchTab("sessions"); else Views.sessions();
+      if (currentTab !== "sessions") switchTab("sessions"); else Sessions.renderResults();
       toast(`'${key === "service" ? shortService(v) : v}'(으)로 필터했어요`);
     });
-    $$("#d-reps [data-sg-open]").forEach((el) => el.onclick = () => { closeModal(); this.openDetail(el.dataset.sgOpen); });
+    $$("#d-reps [data-sg-open]", root).forEach((el) => el.onclick = () => { if (mode === "sheet") closeModal(); this.openDetail(el.dataset.sgOpen); });
+    return save;
   },
+  openDetail(id) {
+    const s = this.all().find((x) => x.session_id === id);
+    if (!s) return;
+    const pane = currentTab === "sessions" && Layout.wide() && $("#sd-pane");
+    if (pane) {
+      Sessions.selected = id;
+      pane.innerHTML = `<div class="pane-body">${this.detailBodyHTML(s)}</div><div class="pane-actions">${this.detailActionsHTML("pane")}</div>`;
+      pane.scrollTop = 0;
+      this.bindDetail(pane, s, "pane");
+      $$("#view-sessions .session-card").forEach((c) => c.classList.toggle("selected", c.dataset.id === id));
+      return;
+    }
+    const sheetOv = openSheet({ title: "세션 소개", body: this.detailBodyHTML(s), actions: this.detailActionsHTML("sheet") });
+    const save = this.bindDetail(sheetOv, s, "sheet");
+    $("#d-close").onclick = () => { save(); $("#modal-overlay")._dismiss(); };
+    // 배경 탭·스와이프·뒤로가기로 닫을 때도 노트 저장 (메모 입력 대기분 포함)
+    const _d = sheetOv._dismiss;
+    sheetOv._dismiss = () => { save(); _d(); };
+  }
 
 };
 
 Views.sessions = function () {
   const el = $("#view-sessions");
-  el.innerHTML = `
+  const search = `
     <input type="search" id="ss-q" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false"
       placeholder="세션 검색 (제목·코드·연사·AWS 서비스${allSessions().some((x) => x.abstract) ? "·소개" : ""})" value="${esc(Sessions.q)}">
+    <div id="ss-recent" class="rq-row hidden"></div>
     <div id="ss-results"></div>`;
+  const split = Layout.wide();
+  el.classList.toggle("is-split", split);
+  el.innerHTML = split
+    ? `<div class="split"><div class="split-list">${search}</div>
+        <aside class="split-detail" id="sd-pane" aria-label="세션 소개"><p class="split-empty">세션을 고르면 여기에 소개가 보여요</p></aside></div>`
+    : search;
   bindSessionChrome();
   Sessions.renderResults();
+  if (split && Sessions.selected) Sessions.openDetail(Sessions.selected);
+};
+
+const FILTER_LABEL = {
+  date: (v) => dayLabel(v), service: (v) => shortService(v), level: (v) => `Lv.${v}`,
+  type: (v) => typeKo(v), format: (v) => FORMAT_KO[v] || v
 };
 
 /* 검색어·필터가 바뀌면 결과 영역만 다시 그림 (입력창을 건드리지 않아 한글 입력이 끊기지 않음) */
 Sessions.renderResults = function () {
   const view = $("#view-sessions"), box = $("#ss-results");
   if (!box) return;
+  const split = view.classList.contains("is-split");
   const filterIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z"/></svg>`;
   let html = "", fab = false;
   if (Sessions.pending()) {
@@ -400,31 +446,38 @@ Sessions.renderResults = function () {
       </div>`;
   } else {
     const list = Sessions.sortList(Sessions.filtered());
-    const activeFilterCount = Object.values(Sessions.f).filter((v) => v).length;
+    const activeFilterCount = Sessions.activeCount();
     const shown = Math.min(list.length, Sessions.limit);
     const cards = Sessions.venueGroup ? Sessions.groupedByVenueHTML(list)
       : list.slice(0, shown).map((s) => Sessions.cardHTML(s)).join("") || `<div class="empty-state"><div class="big">🔍</div><p>조건에 맞는 세션이 없어요</p>${activeFilterCount ? `<button class="btn ghost small" id="ss-clear-f">필터 초기화</button>` : ""}</div>`;
     const more = !Sessions.venueGroup && list.length > shown
       ? `<button class="btn ghost block load-more" id="ss-more">더 보기 (${(list.length - shown).toLocaleString("ko-KR")}개 남음)</button>` : "";
+    const chips = Object.keys(Sessions.f).filter((k) => Sessions.f[k]).map((k) =>
+      `<button class="chip on af-chip" data-af="${k}" aria-label="필터 해제">${esc((FILTER_LABEL[k] || ((v) => v))(Sessions.f[k]))} ✕</button>`);
+    if (Sessions.soonActive()) chips.unshift(`<button class="chip on af-chip" data-af="soon" aria-label="필터 해제">⏰ 곧 시작 ✕</button>`);
     html = `
       <div class="ss-bar">
         <span class="ss-bar-l">
           <span class="muted">${list.length.toLocaleString("ko-KR")}개 세션${activeFilterCount ? ` · 필터 ${activeFilterCount}개` : ""}${dataAsOf() ? ` · ${dataAsOf()}` : ""}</span>
-          <button class="chip" id="ss-sort">↕️ ${SORT_LABEL[Sessions.sort] || "시간순"}</button>
+          <button class="chip" id="ss-sort">↕️ ${SORT_LABEL[Sessions.soonActive() ? "time" : Sessions.sort] || "시간순"}</button>
+          ${split ? `<button class="chip" id="ss-filter">필터${activeFilterCount ? ` (${activeFilterCount})` : ""}</button>` : ""}
         </span>
         <span class="ss-bar-r">
+          ${Sessions.isEventDay() ? `<button class="chip${Sessions.soon ? " on" : ""}" id="ss-soon" aria-pressed="${Sessions.soon}">⏰ 곧 시작</button>` : ""}
           <button class="chip" id="ss-notes">📝 노트</button>
           <button class="chip${Sessions.venueGroup ? " on" : ""}" id="ss-venue-group" aria-pressed="${Sessions.venueGroup}">📍 베뉴별</button>
         </span>
       </div>
+      ${chips.length ? `<div class="af-row">${chips.join("")}</div>` : ""}
       ${cards}${more}
-      <button id="ss-filter-fab" class="fab" aria-label="필터${activeFilterCount ? ` (${activeFilterCount}개 적용)` : ""}">${filterIcon}${activeFilterCount ? `<span class="fab-badge">${activeFilterCount}</span>` : ""}</button>`;
-    fab = true;
+      ${split ? "" : `<button id="ss-filter-fab" class="fab" aria-label="필터${activeFilterCount ? ` (${activeFilterCount}개 적용)` : ""}">${filterIcon}${activeFilterCount ? `<span class="fab-badge">${activeFilterCount}</span>` : ""}</button>`}`;
+    fab = !split;
   }
   box.innerHTML = html;
   view.classList.toggle("has-fab", fab);
   bindHitCards();
-  const fabBtn = $("#ss-filter-fab");
+  if (Sessions.selected) $$("#view-sessions .session-card").forEach((c) => c.classList.toggle("selected", split && c.dataset.id === Sessions.selected));
+  const fabBtn = $("#ss-filter-fab") || $("#ss-filter");
   if (fabBtn) fabBtn.onclick = () => Sessions.openFilterSheet();
   const moreBtn = $("#ss-more");
   if (moreBtn) moreBtn.onclick = () => { Sessions.limit += SESSION_PAGE; Sessions.renderResults(); };
@@ -434,6 +487,13 @@ Sessions.renderResults = function () {
   if (vg) vg.onclick = () => { Sessions.venueGroup = !Sessions.venueGroup; Sessions.renderResults(); };
   const srt = $("#ss-sort");
   if (srt) srt.onclick = () => Sessions.openSortMenu();
+  const soon = $("#ss-soon");
+  if (soon) soon.onclick = () => { Sessions.soon = !Sessions.soon; Sessions.limit = SESSION_PAGE; Sessions.renderResults(); };
+  $$("#ss-results [data-af]").forEach((b) => b.onclick = () => {
+    if (b.dataset.af === "soon") Sessions.soon = false; else Sessions.f[b.dataset.af] = "";
+    Sessions.limit = SESSION_PAGE;
+    Sessions.renderResults();
+  });
   const clr = $("#ss-clear-f");
   if (clr) clr.onclick = () => { Sessions.resetFilters(); Sessions.renderResults(); };
 };
@@ -445,6 +505,7 @@ Sessions.refreshAfterFav = function () {
 
 Sessions.resetFilters = function () {
   Sessions.f = { date: "", venue: "", type: "", level: "", topic: "", service: "", format: "" };
+  Sessions.soon = false;
   Sessions.limit = SESSION_PAGE;
 };
 
@@ -537,10 +598,34 @@ function bindHitCards() {
   }));
 }
 
+/* 최근 검색어 (최대 8개, 새 것이 앞) */
+const RecentQueries = {
+  list() { return Array.isArray(S().recent_queries) ? S().recent_queries : []; },
+  add(q) {
+    const v = String(q || "").trim();
+    if (v.length < 2) return;
+    S().recent_queries = [v].concat(this.list().filter((x) => x.toLowerCase() !== v.toLowerCase())).slice(0, 8);
+    Store.save();
+  },
+  clear() { S().recent_queries = []; Store.save(); }
+};
+
 function bindSessionChrome() {
-  const q = $("#ss-q");
+  const q = $("#ss-q"), rq = $("#ss-recent");
   let t;
   const run = () => { clearTimeout(t); Sessions.q = q.value; Sessions.limit = SESSION_PAGE; Sessions.renderResults(); };
-  q.addEventListener("input", () => { clearTimeout(t); t = setTimeout(run, 250); });
-  q.addEventListener("keydown", (e) => { if (e.key === "Enter") { run(); q.blur(); } });
+  const paintRecent = () => {
+    const list = RecentQueries.list();
+    const show = document.activeElement === q && !q.value && list.length;
+    rq.classList.toggle("hidden", !show);
+    rq.innerHTML = show ? `<span class="muted">최근</span>${list.map((x) => `<button class="chip" data-rq="${esc(x)}">${esc(x)}</button>`).join("")}<button class="link-btn" id="rq-clear">지우기</button>` : "";
+    $$("[data-rq]", rq).forEach((b) => b.onclick = () => { q.value = b.dataset.rq; RecentQueries.add(q.value); run(); paintRecent(); q.blur(); });
+    const c = $("#rq-clear", rq);
+    if (c) c.onclick = () => { RecentQueries.clear(); paintRecent(); };
+  };
+  rq.addEventListener("pointerdown", (e) => e.preventDefault()); // 칩을 누르는 동안 입력창 포커스 유지
+  q.addEventListener("focus", paintRecent);
+  q.addEventListener("blur", () => { RecentQueries.add(q.value); setTimeout(paintRecent, 0); });
+  q.addEventListener("input", () => { paintRecent(); clearTimeout(t); t = setTimeout(run, 250); });
+  q.addEventListener("keydown", (e) => { if (e.key === "Enter") { RecentQueries.add(q.value); run(); q.blur(); } });
 }
