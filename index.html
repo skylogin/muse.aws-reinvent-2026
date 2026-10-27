@@ -25,6 +25,8 @@
     document.documentElement.dataset.theme = t;
     var mc = document.querySelector('meta[name="theme-color"]'); // 스플래시 때부터 상태바 색 맞춤
     if (mc) mc.content = (t === "dark") ? "#16233f" : "#ffffff";
+    var ts = st ? +st.text_scale : 1; // 글자 크기도 첫 페인트 전에
+    document.documentElement.style.setProperty("--text-scale", [1, 1.12, 1.25].indexOf(ts) >= 0 ? ts : 1);
   } catch (e) {}
   /* 스플래시는 하루 첫 실행에만 — 행사 중 자주 열 때 기다리지 않게 */
   try {
@@ -62,7 +64,7 @@
 </div>
 <div id="app">
   <header id="app-header">
-    <div class="header-title">re:Invent 2026 출장</div>
+    <div class="header-title">re:Invent 2026 출장<span id="net-badge" class="net-badge hidden" role="status">오프라인</span></div>
     <div class="header-clock"><span id="clock-vegas"></span><span id="clock-kst"></span></div>
     <button id="hdr-settings" class="hdr-btn hidden" type="button" aria-label="설정">⚙️</button>
   </header>

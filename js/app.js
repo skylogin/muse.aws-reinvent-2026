@@ -200,6 +200,7 @@ function defaultState() {
     install_dismissed: false,
     fx_rate: 1450,
     theme: "system",         // system | light | dark
+    text_scale: 1,           // 글자 크기 1 | 1.12 | 1.25 (핀치 확대를 막는 대신)
     notify: { on: false, minutes: 15 },  // 관심 세션 시작 알림 (앱이 켜져 있을 때만 동작)
     weather_cache: null,
     depart_done: {},   // 출발 전 할 일 완료 상태
@@ -414,6 +415,16 @@ if (darkMQ) {
   if (darkMQ.addEventListener) darkMQ.addEventListener("change", onSys);
   else if (darkMQ.addListener) darkMQ.addListener(onSys);
 }
+
+/* ---------- text scale (보통/크게/아주 크게) ---------- */
+const TEXT_SCALES = [1, 1.12, 1.25];
+function textScale() { const v = +((Store.state || {}).text_scale) || 1; return TEXT_SCALES.includes(v) ? v : 1; }
+function applyTextScale() { document.documentElement.style.setProperty("--text-scale", textScale()); }
+
+/* ---------- online / offline ---------- */
+function paintNet() { const b = $("#net-badge"); if (b) b.classList.toggle("hidden", navigator.onLine); }
+window.addEventListener("offline", () => { paintNet(); toast("오프라인이에요 · 저장된 데이터로 계속 쓸 수 있어요"); });
+window.addEventListener("online", () => { paintNet(); toast("다시 연결됐어요"); if (currentTab === "home") Weather.refresh(); });
 
 /* ---------- drawer (side panel for tips/info) ---------- */
 function openDrawer(title, html) {
@@ -979,6 +990,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   Store.load();
   applyTheme();
+  applyTextScale();
+  paintNet();
   Notify.start();
   tickClock();
   setInterval(tickClock, 10000);

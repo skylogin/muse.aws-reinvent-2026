@@ -218,7 +218,7 @@ button.btn, .btn {
 .info-btn { margin-top: 8px; }
 .info-btn:first-of-type { margin-top: 4px; }
 .row-actions { display: flex; gap: 2px; margin-left: auto; flex: 0 0 auto; }
-.icon-btn { background: none; border: 0; font-size: 16px; cursor: pointer; padding: 10px 8px; opacity: .75; }
+.icon-btn { background: none; border: 0; font-size: 16px; cursor: pointer; padding: 10px 8px; opacity: .75; min-width: 44px; min-height: 44px; }
 .icon-btn:active { opacity: 1; }
 
 /* ---------- forms ---------- */
@@ -272,7 +272,7 @@ label.field { font-size: 13px; font-weight: 600; color: var(--muted); }
 [data-theme="dark"] .bs-grab { background: #46557a; }
 .bs-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 10px 8px 18px; }
 .bs-head h2 { margin: 0; font-size: 16px; color: var(--muted); font-weight: 700; }
-.bs-close { width: 40px; height: 40px; border: 0; border-radius: 50%; background: var(--ghost-bg); color: var(--ghost-text);
+.bs-close { width: 44px; height: 44px; border: 0; border-radius: 50%; background: var(--ghost-bg); color: var(--ghost-text);
   font-size: 16px; cursor: pointer; flex: 0 0 auto; }
 .bs-body { flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
   padding: 0 18px 14px; }
@@ -731,3 +731,12 @@ table.plain th { color: var(--muted); font-weight: 600; font-size: 12px; }
 
 /* ---------- expenses fab ---------- */
 .fab.fab-text { font-size: 28px; line-height: 1; }
+
+/* ---------- text scale · hit targets · offline ----------
+   확대는 화면의 자식에만 건다: 고정 위치 FAB가 확대된 조상 안에 있으면 위치가 어긋나 탭바와 겹친다 */
+.view > :not(.fab):not(#ss-results), #ss-results > :not(.fab), #modal-root .bs-head, #modal-root .bs-body, #modal-root .bs-actions, #modal-root .overlay.center .sheet > *,
+.drawer-body, .layer-body, .report-screen-body, #app-header, #tabbar button span:last-child { zoom: var(--text-scale, 1); }
+.fav-btn, .sg-btn, .drawer-close { min-width: 44px; min-height: 44px; }
+.chip { min-height: 36px; }
+.net-badge { display: inline-block; vertical-align: middle; font-size: 11px; font-weight: 700; padding: 2px 8px; margin-left: 6px;
+  border-radius: 999px; background: var(--st-tight-bg); color: var(--st-tight); }
