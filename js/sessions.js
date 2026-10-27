@@ -221,7 +221,7 @@ const Sessions = {
       <button class="fav-btn ${fav ? "on" : ""}" data-fav="${esc(s.session_id)}" aria-label="${fav ? "관심 해제" : "관심 세션에 담기"}" aria-pressed="${fav}">${fav ? "⭐" : "☆"}</button>
       <strong>${esc(s.title)}</strong>
       ${s.abstract_ko ? `<div class="sum">${esc(s.abstract_ko)}</div>` : ""}
-      <div class="meta"><span class="t-type">${esc(typeKo(s.session_type))}</span>${s.date ? esc(dayLabel(s.date)) : ""} ${esc(s.start_time || "")}${s.end_time ? "–" + esc(s.end_time) : ""}${s.level ? ` · Lv.${esc(s.level)}` : ""} · ${esc(s.code || "")}<br>📍 ${esc(s.venue || "")}${room ? " · " + esc(room) : ""}</div>
+      <div class="meta"><span class="t-type">${esc(typeKo(s.session_type))}</span>${s.date || s.start_time ? `${s.date ? esc(dayLabel(s.date)) : ""} ${esc(s.start_time || "")}${s.end_time ? "–" + esc(s.end_time) : ""}` : "일정 미정"}${s.level ? ` · Lv.${esc(s.level)}` : ""} · ${esc(s.code || "")}<br>📍 ${esc([s.venue, room].filter(Boolean).join(" · ") || "장소 미정")}</div>
       ${res === "reserved" ? `<div style="margin-top:6px;"><span class="badge ok">예약됨</span></div>` : res === "waitlist" ? `<div style="margin-top:6px;"><span class="badge warn">대기</span></div>` : ""}
     </div>`;
   },
@@ -298,7 +298,7 @@ const Sessions = {
         </div>
         <h3 class="bs-title sd-title">${esc(s.title)}</h3>
         <div class="sd-facts">
-          <div class="sd-fact"><span class="k">🗓️ ${s.date ? esc(dayLabel(s.date)) : "일시"}</span><b>${esc(s.start_time || "")}${s.end_time ? "–" + esc(s.end_time) : ""}</b>${kst ? `<small>🇰🇷 한국 ${kst}</small>` : ""}</div>
+          <div class="sd-fact"><span class="k">🗓️ ${s.date ? esc(dayLabel(s.date)) : "일시"}</span><b>${s.start_time ? esc(s.start_time) + (s.end_time ? "–" + esc(s.end_time) : "") : "미정"}</b>${kst ? `<small>🇰🇷 한국 ${kst}</small>` : ""}</div>
           <div class="sd-fact"><span class="k">📍 장소</span><b>${esc(s.venue || "미정")}</b>${room ? `<small>${esc(room)}</small>` : ""}</div>
           <div class="sd-fact"><span class="k">🎯 형식</span><b>${esc([typeKo(s.session_type), fmt].filter(Boolean).join(" · "))}</b>${lvl ? `<small>${esc(lvl)}</small>` : ""}</div>
           <div class="sd-fact"><span class="k">⏱️ 길이</span><b>${esc(len || "—")}</b>${lang ? `<small>${esc(lang)}</small>` : ""}</div>

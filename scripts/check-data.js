@@ -78,19 +78,26 @@ venues.forEach((v) => {
 
 const ev = ei.event || {};
 const dateRe = /^\d{4}-\d{2}-\d{2}$/, timeRe = /^\d{2}:\d{2}$/;
+// 공식 카탈로그는 일정이 공개되기 전의 세션을 날짜·시간·베뉴 없이 올린다 (앱은 '일정 미정'으로 표시).
+// 이런 세션이 너무 많으면 수집이 깨진 것으로 본다.
+const UNSCHEDULED_MAX_RATIO = 0.05;
 const bad = {};
 const note = (key, id) => { (bad[key] = bad[key] || []).push(id); };
+let unscheduled = 0, roomOnly = 0;
 S.forEach((s) => {
   const id = s.session_id || "(ID 없음)";
   if (!s.title) note("제목 없음", id);
+  if (!s.date && !s.start_time && !s.end_time && !s.venue) { unscheduled++; return; } // 일정 미정: 네 값이 모두 비어야 함
   if (!dateRe.test(s.date || "")) note("날짜 형식(YYYY-MM-DD) 아님", id);
   else if ((ev.start_date && s.date < ev.start_date) || (ev.end_date && s.date > ev.end_date)) note("행사 기간 밖 날짜", id);
   if (!timeRe.test(s.start_time || "") || !timeRe.test(s.end_time || "")) note("시간 형식(HH:MM) 아님", id);
   else if (s.end_time <= s.start_time) note("끝나는 시간이 시작보다 빠름", id);
-  if (!s.venue) note("베뉴 없음", id);
+  if (!s.venue) { if (s.room) roomOnly++; else note("베뉴·장소 없음", id); } // 여러 장소·베뉴 밖 장소는 room에만 있음
   else if (!venueNames[aliases[s.venue] || s.venue]) note(`좌표 없는 베뉴 '${s.venue}'`, id);
 });
 Object.keys(bad).forEach((k) => fail(`${k}: ${bad[k].length}개 (예: ${bad[k].slice(0, 3).join(", ")})`));
+if (S.length && unscheduled / S.length > UNSCHEDULED_MAX_RATIO)
+  fail(`일정 미정 세션이 너무 많아요: ${unscheduled}/${S.length}개 (수집 오류일 수 있음, 허용 ${UNSCHEDULED_MAX_RATIO * 100}%)`);
 
 /* ---- 4. 앱이 직접 읽는 event_info 형식 ---- */
 const expo = ei.expo || {};
