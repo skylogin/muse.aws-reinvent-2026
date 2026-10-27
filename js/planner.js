@@ -282,7 +282,10 @@ const Planner = {
     const clamp = (arr) => arr.map((b) => ({ ...b, s: Math.max(b.s, START), e: Math.min(b.e, END) }));
     const lane = (arr, off, k) => this.layoutBlocks(clamp(arr)).map((b) => ({ ...b, lf: off + b.lf * k, wf: b.wf * k }));
     const blocks = lane(mine, 0, 1 - LANE).concat(LANE ? lane(peerList, 1 - LANE, LANE) : []);
-    const trackW = Math.min(window.innerWidth || 390, 520) - 28 - GUTTER - 6; // 글자 줄 수 추정용
+    // 글자 줄 수 추정용 트랙 폭: 새 화면이 그려지기 전이라 #view-planner 폭으로 계산 (넓음은 .pl-cols 3:2 열의 왼쪽)
+    // 글자 크기 zoom은 화면의 자식에 걸리므로, 시간표 안 좌표로 바꾸려면 글자 배율로 나눔
+    const vw = ((($("#view-planner") || {}).clientWidth || Math.min(window.innerWidth || 390, 520)) - 28) / textScale();
+    const trackW = (Layout.size() === "expanded" ? (vw - 12) * 3 / 5 : vw) - GUTTER - 6;
     // 이동 구간 (내 일정만 · 빈 시간이 좁으면 칩을 앞 일정 아래쪽에 붙이므로 그만큼 글자 영역을 비워 둠)
     const legs = this.legsFor(date, mine);
     const reserve = {};
@@ -378,7 +381,7 @@ const Planner = {
     }
 
     return `<div class="tt-wrap"><div class="tt-grid" style="height:${y(END) + PAD}px">${html}</div>
-      <div class="tt-note muted">일정을 탭하면 상세 · 이동 표시를 탭하면 길찾기 · 🇰🇷 한국 시간${S().show_kr_hours !== false ? "<br>푸른 띠는 한국 업무시간 (설정에서 끌 수 있어요)" : ""}</div></div>`;
+      <div class="tt-note muted">일정을 탭하면 상세 · 이동 표시를 탭하면 길찾기 · 🇰🇷 한국 시간${S().show_kr_hours !== false ? "<br>푸른 띠는 한국 업무시간 (⋯ 더보기에서 끌 수 있어요)" : ""}</div></div>`;
   },
 
   /* 라스베가스 하루(PST) 중 한국 평일 업무시간(09–18시 KST)에 해당하는 구간 — PST + 17시간 = KST
@@ -580,7 +583,7 @@ const Planner = {
       };
       const rs = $("#pf-reset");
       if (rs) rs.onclick = () => { delete S().fixed_edits[it.id]; Store.save(); closeModal(); Views.planner(); toast("기본값으로 되돌렸어요"); };
-      $("#pf-hide").onclick = () => { closeModal(); this.toggleFixed(it.id); toast("숨겼어요 — 아래 '고정 이벤트 표시'에서 다시 켤 수 있어요"); };
+      $("#pf-hide").onclick = () => { closeModal(); this.toggleFixed(it.id); toast("숨겼어요 — ⋯ 더보기에서 다시 켤 수 있어요"); };
       $("#pf-close").onclick = dismiss;
       return;
     }
@@ -747,6 +750,33 @@ const Planner = {
     if (id) this.openItem(id, day);
   },
 
+  /* ⋯ 더보기: 고정 이벤트 표시 · 한국 업무시간 띠 · ICS · 보고서 (자주 안 쓰는 것을 첫 화면에서 뺌) */
+  openMore() {
+    const body = () => `<h3 class="sg-head" style="margin-top:0;">고정 이벤트 표시</h3>
+      ${FIXED_EVENTS.filter((f) => f.date === plannerDay).map((f0) => {
+        const f = { ...f0, ...((S().fixed_edits || {})[f0.id] || {}) };
+        return `<label class="check-item"><input type="checkbox" data-fx="${f.id}" ${S().fixed_off.includes(f.id) ? "" : "checked"}>
+        <span>${esc(f.start)} ${esc(f.title)}${f.venue ? ` <span class="muted">· ${esc(f.venue)}</span>` : ""}</span></label>`;
+      }).join("") || `<p class="muted">이 날의 고정 이벤트가 없어요</p>`}
+      <div class="setting-row" style="margin-top:10px;">
+        <span>시간표에 🇰🇷 한국 업무시간(평일 09–18시) 표시<br><span class="muted" style="font-size:12px;">라스베가스 16시–24시 무렵이 한국 오전·오후예요</span></span>
+        <label class="switch"><input type="checkbox" id="pl-kr" aria-label="시간표에 한국 업무시간 표시"${S().show_kr_hours !== false ? " checked" : ""}><span class="slider"></span></label>
+      </div>
+      <div class="row" style="margin-top:12px;">
+        <button class="btn ghost small" id="pl-ics">📅 ICS 내보내기</button>
+        <button class="btn ghost small" id="pl-report">📋 일정 보고서</button>
+      </div>`;
+    openSheet({ title: `⋯ ${dayLabel(plannerDay)} 더보기`, body: `<div id="pl-more-body">${body()}</div>`, actions: `<button class="btn" id="pl-more-close">닫기</button>` });
+    const bind = () => {
+      $$("#pl-more-body [data-fx]").forEach((c) => c.onchange = () => this.toggleFixed(c.dataset.fx));
+      $("#pl-kr").onchange = (e) => { S().show_kr_hours = e.target.checked; Store.save(); Views.planner(); };
+      $("#pl-ics").onclick = () => this.exportICS();
+      $("#pl-report").onclick = () => { closeModal(); this.reportView(); };
+    };
+    bind();
+    $("#pl-more-close").onclick = () => $("#modal-overlay")._dismiss();
+  },
+
   toggleFixed(id) {
     const off = S().fixed_off;
     const i = off.indexOf(id);
@@ -850,6 +880,7 @@ Views.planner = function () {
       ${Share.peers().map((p) => `<button class="peer-chip${p.visible !== false ? " on" : ""}" data-peer="${p.id}" aria-pressed="${p.visible !== false}">${Share.dotHTML(p)}${esc(p.name)}</button>`).join("")}
       <button class="peer-chip add" id="pl-share">👥 ${Share.peers().length ? "공유·받기" : "동료와 일정 공유"}</button>
       ${Share.peers().length ? `<button class="peer-chip add" id="pl-peers">관리</button>` : ""}
+      <button class="peer-chip add" id="pl-more" aria-label="더보기: 고정 이벤트·한국 업무시간·ICS·보고서">⋯ 더보기</button>
     </div>
     ${(() => {
       const cf = Planner.allConflicts();
@@ -860,33 +891,23 @@ Views.planner = function () {
         <span class="pin">📌</span>
         <span class="tx"><b>${esc(it.title)}</b><span class="muted">${esc([it.venue, it.note].filter(Boolean).join(" · "))}</span></span>
       </button>`).join("")}</div>` : ""}
-    <div id="pl-timeline">${Planner.renderTimetable(plannerDay)}</div>
-    <div class="card"><h3>🧭 ${dayLabel(plannerDay)} 동선</h3>
+    ${(() => {
+      const tl = `<div id="pl-timeline">${Planner.renderTimetable(plannerDay)}</div>`;
+      const rc = `<div class="card"><h3>🧭 ${dayLabel(plannerDay)} 동선</h3>
       ${route || `<p class="muted">이 날은 이동할 일정이 없어요.</p>`}
       <div class="route-info">
         <button class="btn ghost small" id="ri-guide">🗺️ 베뉴·셔틀·이동 정보</button>
       </div>
-    </div>
-    <div class="card"><h3>고정 이벤트 표시</h3>
-      ${FIXED_EVENTS.filter((f) => f.date === plannerDay).map((f0) => {
-        const f = { ...f0, ...((S().fixed_edits || {})[f0.id] || {}) };
-        return `<label class="check-item"><input type="checkbox" data-fx="${f.id}" ${S().fixed_off.includes(f.id) ? "" : "checked"}>
-        <span>${esc(f.start)} ${esc(f.title)}${f.venue ? ` <span class="muted">· ${esc(f.venue)}</span>` : ""}</span></label>`;
-      }).join("") || `<p class="muted">이 날의 고정 이벤트가 없어요</p>`}
-    </div>
-    <div class="row">
-      <button class="btn ghost small" id="pl-ics">📅 ICS 내보내기</button>
-      <button class="btn ghost small" id="pl-report">📋 일정 보고서</button>
     </div>`;
+      return Layout.size() === "expanded" ? `<div class="pl-cols"><div class="pl-main">${tl}</div><div class="pl-side">${rc}</div></div>` : tl + rc;
+    })()}`;
   $$("#view-planner [data-day]").forEach((b) => b.onclick = () => { plannerManual = true; plannerDay = b.dataset.day; Views.planner(); });
   const act = $("#view-planner .day-tabs .active");
   if (act) act.scrollIntoView({ block: "nearest", inline: "center" });
   const goS = $("#pl-go-sessions");
   if (goS) goS.onclick = () => switchTab("sessions");
   $("#ri-guide").onclick = () => { Guide.next = "local"; switchTab("guide"); };
-  $$("#view-planner [data-fx]").forEach((c) => c.onchange = () => Planner.toggleFixed(c.dataset.fx));
-  $("#pl-ics").onclick = () => Planner.exportICS();
-  $("#pl-report").onclick = () => Planner.reportView();
+  $("#pl-more").onclick = () => Planner.openMore();
   $$("#view-planner [data-pitem]").forEach((it) => {
     const open = () => { const id = it.dataset.pitem; if (id) Planner.openItem(id, plannerDay); };
     it.addEventListener("click", open);
