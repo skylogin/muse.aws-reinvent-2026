@@ -672,9 +672,24 @@ const Planner = {
     const d = DAYS.find((x) => x > today && this.timedFor(x).length);
     return d ? { day: d, today: false } : null;
   },
+  /* 방금(3시간 안) 끝났는데 노트가 없는 오늘 세션 → 별점·메모 권유 (보여 주는 날과 상관없이 오늘 기준) */
+  nudgeHTML() {
+    const today = vegasDateStr();
+    if (!DAYS.includes(today)) return "";
+    const p = vegasParts(), nowMin = (+p.hour) * 60 + (+p.minute);
+    const ended = this.timedFor(today).filter((x) => x.it.kind === "session" && x.e <= nowMin && x.e >= nowMin - 180 &&
+      !(S().session_notes || {})[this.itemId(x.it)]);
+    if (!ended.length) return "";
+    const x = ended[ended.length - 1];
+    return `<div class="up-nudge" data-nudge="${esc(this.itemId(x.it))}" role="button" tabindex="0">⭐ 방금 끝난 "${esc(x.it.title)}" — 별점·메모 남기기</div>`;
+  },
+  dirURL(venue) {
+    return "https://www.google.com/maps/dir/?api=1&travelmode=walking&destination=" + encodeURIComponent((VENUE_ALIASES[venue] || venue) + " Las Vegas");
+  },
   upcomingHTML() {
+    const nudge = this.nudgeHTML();
     const u = this.upcomingDay();
-    if (!u) return "";
+    if (!u) return nudge ? `<div class="card">${nudge}</div>` : "";
     let day = u.day, list = this.timedFor(day), head, sub = "";
     const p = vegasParts(), nowMin = (+p.hour) * 60 + (+p.minute);
     const daysTo = Math.round((new Date(day + "T00:00:00") - new Date(vegasDateStr() + "T00:00:00")) / 86400000);
@@ -683,7 +698,7 @@ const Planner = {
       if (!left.length) {
         // 오늘 일정이 모두 끝났으면 다음 일정 날을 미리 보여줌
         const nx = DAYS.find((x) => x > day && this.timedFor(x).length);
-        if (!nx) return `<div class="card"><h3>📅 오늘 일정</h3><p class="muted">오늘 일정이 모두 끝났어요. 수고하셨어요 🙌</p></div>`;
+        if (!nx) return `<div class="card"><h3>📅 오늘 일정</h3>${nudge}<p class="muted">오늘 일정이 모두 끝났어요. 수고하셨어요 🙌</p></div>`;
         sub = `<p class="muted" style="margin:-2px 0 6px;">오늘 일정은 모두 끝났어요 🙌</p>`;
         day = nx; list = this.timedFor(nx);
         head = `📅 다음 일정 · ${dayLabel(nx)}`;
@@ -697,6 +712,7 @@ const Planner = {
     const isToday = day === vegasDateStr();
     const legInto = new Map(this.legsFor(day).map((l) => [this.itemId(l.b.it), l]));
     const shown = list.slice(0, 5);
+    const dirIdx = isToday ? shown.findIndex((x) => x.s > nowMin) : 0; // 다음에 갈 일정에만 길찾기
     const rows = shown.map((x, i) => {
       const it = x.it, id = this.itemId(it);
       let tag = "";
@@ -711,15 +727,17 @@ const Planner = {
         ? `<div class="up-leg st-${l.status}">${l.tr.icon} ${esc(l.tr.same ? "건물 내 이동" : `${shortVenue(l.a.it.venue)} → ${shortVenue(it.venue)}`)} ${l.tr.minutes}분 · ${esc(this.legStatusText(l))}${l.status !== "bad" ? ` · ${this.hhmm(l.leaveBy)}까지 출발` : ""}</div>` : "";
       return `${legRow}<div class="up-item" data-pday="${day}" data-pitem="${esc(id)}" role="button" tabindex="0">
         <div class="up-time">${this.hhmm(x.s)}<small>${this.hhmm(x.e)}</small></div>
-        <div class="up-body"><b>${esc(it.title)}</b><span class="muted">📍 ${esc(it.venue || "장소 미정")}${(() => { const w = it.kind === "session" ? Share.withPeers(id, day) : []; return w.length ? ` · 👥 ${esc(w.map((p) => p.name).join(", "))}` : ""; })()}</span><span>${resBadge}</span></div>
+        <div class="up-body"><b>${esc(it.title)}</b>${i === dirIdx && it.venue ? `<a class="link-btn up-dir" data-dir href="${this.dirURL(it.venue)}" target="_blank" rel="noopener">🧭 길찾기</a>` : ""}<span class="muted">📍 ${esc(it.venue || "장소 미정")}${(() => { const w = it.kind === "session" ? Share.withPeers(id, day) : []; return w.length ? ` · 👥 ${esc(w.map((p) => p.name).join(", "))}` : ""; })()}</span><span>${resBadge}</span></div>
         ${tag}
       </div>`;
     }).join("");
     const more = list.length > shown.length ? ` (${list.length - shown.length}개 더)` : "";
-    return `<div class="card"><h3>${head}</h3>${sub}${rows}
+    return `<div class="card"><h3>${head}</h3>${nudge}${sub}${rows}
       <button class="btn ghost block small" data-pday-all="${day}">${dayLabel(day)} 전체 일정 보기${more}</button></div>`;
   },
   bindUpcoming() {
+    $$("#home-upcoming [data-dir]").forEach((a) => a.addEventListener("click", (e) => e.stopPropagation()));
+    $$("#home-upcoming [data-nudge]").forEach((el) => el.onclick = () => Sessions.openDetail(el.dataset.nudge));
     $$("#home-upcoming [data-pitem]").forEach((el) => el.onclick = () => this.goto(el.dataset.pday, el.dataset.pitem));
     $$("#home-upcoming [data-pday-all]").forEach((el) => el.onclick = () => this.goto(el.dataset.pdayAll));
   },

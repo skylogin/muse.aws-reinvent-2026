@@ -31,13 +31,13 @@ const Suggest = {
     return sc;
   },
 
-  /* 홈 맞춤 추천: 관심 토픽·서비스 점수가 높은 세션 (이미 담은 건 제외) */
-  recommended(limit) {
+  /* 홈 맞춤 추천: 관심 토픽·서비스 점수가 높은 세션 (이미 담은 건 제외) — filter는 자르기 전에 적용 */
+  recommended(limit, filter) {
     const prof = S().profile || {};
     if (!(prof.topics || []).length && !(prof.services || []).length) return [];
     const favs = new Set(S().favorites);
     return allSessions()
-      .filter((s) => s.date && s.start_time && !favs.has(s.session_id) && !/sponsored by/i.test(s.title || ""))
+      .filter((s) => s.date && s.start_time && !favs.has(s.session_id) && !/sponsored by/i.test(s.title || "") && (!filter || filter(s)))
       .map((s) => ({ s, score: this.score(s, {}) }))
       .filter((x) => x.score > 0)
       .sort((a, b) => b.score - a.score || (a.s.date + a.s.start_time).localeCompare(b.s.date + b.s.start_time))

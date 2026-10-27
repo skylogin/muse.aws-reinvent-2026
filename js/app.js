@@ -585,9 +585,9 @@ const Weather = {
         const t = Math.round(data.current.temperature_2m);
         const mx = Math.round(data.daily.temperature_2m_max[0]);
         const mn = Math.round(data.daily.temperature_2m_min[0]);
-        el.innerHTML = `<div style="font-size:30px;line-height:1;">${this.icon(data.current.weathercode)}</div>
-          <div style="font-size:20px;font-weight:800;">${t}°</div>
-          <div style="font-size:11px;opacity:.8;">${mx}° / ${mn}°</div>`;
+        el.innerHTML = `<div class="wx-ico">${this.icon(data.current.weathercode)}</div>
+          <div class="wx-t">${t}°</div>
+          <div class="wx-range">${mx}° / ${mn}°</div>`;
       }
     } catch (e) { if (el) el.style.display = "none"; }
   }
@@ -733,14 +733,39 @@ function finishOnboarding() {
 }
 
 /* ---------- home view ---------- */
+/* 홈 빠른 실행: 단계(출발 전·행사 중·귀국 후)마다 다른 도구 */
+const HomeActions = {
+  pack: ["🎒", "준비물", () => { Guide.next = "prep"; switchTab("guide"); }],
+  trip: ["✈️", "출장 정보", () => Prep.editTrip()],
+  rec: ["✨", "추천 세션", () => { Sessions.sort = "recommended"; Sessions.resetFilters(); switchTab("sessions"); }],
+  notes: ["📝", "노트", () => Notes.open()],
+  receipt: ["🧾", "영수증", () => Expenses.openForm(null, { photoFirst: true })],
+  tip: ["💵", "팁", () => LocalGuide.openTips()],
+  expo: ["🎪", "스탬프", () => Notes.open("expo")],
+  sos: ["🆘", "응급", () => openDrawer("🆘 응급·안전", LocalGuide.emergencyHTML())],
+  csv: ["🧾", "정산 내보내기", () => { switchTab("expenses"); Expenses.openExport(); }],
+  "notes-txt": ["📝", "노트 내보내기", () => SessionNotes.exportTxt()],
+  backup: ["💾", "백업", () => TransferUI.exportFile()],
+  BY_PHASE: { before: ["pack", "trip", "rec", "notes"], during: ["receipt", "tip", "notes", "expo", "sos"], after: ["csv", "notes-txt", "backup"] },
+  rowHTML(ph) {
+    return `<div class="qa-row span-2">${this.BY_PHASE[ph].map((k) => {
+      const [ico, label] = this[k];
+      return `<button class="qa" data-qa="${k}"><span class="qa-ico">${ico}</span><span>${label}</span></button>`;
+    }).join("")}</div>`;
+  },
+  bind(root) { $$("[data-qa]", root).forEach((b) => b.onclick = () => this[b.dataset.qa][2]()); }
+};
+
 Views.home = function () {
   const st = S();
+  const ph = phase();
   const nick = st.profile.nickname ? esc(st.profile.nickname) + "님" : "게스트님";
   const dd = dday();
   // 행사 기간(11/30–12/4)에는 'DAY n'으로
   const ddText = dd > 0 ? `D-${dd}` : -dd <= 4 ? `DAY ${1 - dd}` : `D+${-dd}`;
+  const today = vegasDateStr();
+  const vp = vegasParts(), nowHM = `${vp.hour}:${vp.minute}`;
 
-  // todo: trip unset?
   const tripTodos = [];
   const f = st.trip.flights;
   if (!f.outbound.flight_no) tripTodos.push("가는 편 항공편 미정");
@@ -748,89 +773,129 @@ Views.home = function () {
   if (!st.trip.hotel.name) tripTodos.push("호텔 미정");
   const unres = st.favorites.filter((id) => !(st.reservations[id] && st.reservations[id].status === "reserved"));
   const todos = [];
-  tripTodos.forEach((t) => todos.push({ text: t, tab: "guide" }));
-  if (unres.length) todos.push({ text: `예약 안 된 관심 세션 ${unres.length}개`, tab: "sessions" });
+  const bAt = st.last_backup_at, bDays = bAt ? Math.floor((Date.now() - bAt) / 86400000) : null;
+  if ((bAt == null && (st.favorites.length || st.expenses.length)) || bDays >= 3) {
+    todos.push({ text: bAt == null ? "💾 아직 백업하지 않았어요" : `💾 백업한 지 ${bDays}일 지났어요`, act: () => { TransferUI.exportFile(); Views.home(); } });
+  }
+  if (ph !== "after") tripTodos.forEach((t) => todos.push({ text: t, tab: "guide" }));
+  if (ph !== "after" && unres.length) todos.push({ text: `예약 안 된 관심 세션 ${unres.length}개`, tab: "sessions" });
   const cl = Packing.list();
   const clDone = cl.filter((x) => x.done).length;
-  if (clDone < cl.length) todos.push({ text: `준비물 ${clDone}/${cl.length} 완료`, tab: "guide" });
-  const today = vegasDateStr();
-  if (today >= "2026-12-03" && today <= "2026-12-05") todos.push({ text: "✈️ 귀국 준비 확인 (체크아웃·공항·면세)", tab: "guide" });
+  if (ph === "before" && clDone < cl.length) todos.push({ text: `준비물 ${clDone}/${cl.length} 완료`, tab: "guide", seg: "prep" });
+  if (today >= "2026-12-03" && today <= "2026-12-05") todos.push({ text: "✈️ 귀국 준비 확인 (체크아웃·공항·면세)", tab: "guide", seg: "return" });
 
   const pending = sessionsPending();
 
-  $("#view-home").innerHTML = `
-    <div class="card hero">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
-        <div>
-          <div style="font-size:13px;opacity:.85">안녕하세요, ${nick} 👋</div>
-          <div style="font-size:30px;font-weight:800;margin:4px 0;">${ddText}</div>
-          <div style="font-size:13px;opacity:.85">11/30–12/4 · 라스베가스 (현지 ${fmtDate(vegasParts())})</div>
+  const hero = ph === "during"
+    ? `<div class="card hero compact span-2">
+        <div class="hero-row"><div><div class="hero-dd">${ddText}</div>
+          <div class="hero-sub">${nick} · 현지 ${fmtDate(vegasParts())}</div></div>
+          <div id="home-weather" class="hero-wx">⛅</div></div></div>`
+    : `<div class="card hero span-2">
+        <div class="hero-row">
+          <div>
+            <div class="hero-sub">${ph === "after" ? `수고하셨어요, ${nick} 🙌` : `안녕하세요, ${nick} 👋`}</div>
+            <div class="hero-dd big">${ddText}</div>
+            <div class="hero-sub">11/30–12/4 · 라스베가스 (현지 ${fmtDate(vegasParts())})</div>
+          </div>
+          <div id="home-weather" class="hero-wx">⛅</div>
         </div>
-        <div id="home-weather" style="text-align:center;flex-shrink:0;min-width:64px;">⛅</div>
-      </div>
-    </div>
-    ${pending ? `<div class="notice">📡 세션 카탈로그 수집 대기 중 — 공식 카탈로그에서 수집하면 세션 탭이 활성화됩니다.</div>` : ""}
-
-    <div id="home-upcoming">${Planner.upcomingHTML()}</div>
-    ${(() => {
-      if (phase() === "after" || pending) return "";
-      const prof = st.profile || {};
-      const hasInterests = (prof.topics || []).length || (prof.services || []).length;
-      if (!hasInterests) {
-        return `<div class="card"><h3>✨ 맞춤 세션 추천</h3>
-          <p class="muted" style="margin:0 0 8px;">관심 토픽·AWS 서비스를 설정하면 2,200여 개 세션 중 나에게 맞는 걸 골라 드려요.</p>
-          <button class="btn ghost block small" id="home-rec-profile">관심사 설정하기</button></div>`;
-      }
-      const recs = Suggest.recommended(4);
-      if (!recs.length) return "";
-      return `<div class="card"><h3>✨ 나를 위한 추천 세션</h3>
-        <p class="muted" style="font-size:12px;margin:0 0 6px;">관심 토픽·서비스 기준 · 아직 안 담은 세션이에요.</p>
-        <div id="home-rec-list">${recs.map((s) => Sessions.recRowHTML(s)).join("")}</div>
-        <button class="btn ghost block small" id="home-rec-more">추천 세션 더 보기</button></div>`;
-    })()}
-    ${Expo.cardHTML()}
-    ${(() => {
-      const items = News.items();
-      if (!items.length && vegasDateStr() < EVENT_START) return "";
-      return `<div class="card"><h3>📣 신규 발표 노트</h3>
-        ${items.length ? News.rowsHTML(items.slice(0, 3)) : `<p class="muted" style="margin:0;">키노트에서 들은 새 서비스·기능을 적어 두면 관련 세션을 바로 찾아 줘요.</p>`}
-        <button class="btn ghost block small" id="home-news">${items.length > 3 ? `전체 ${items.length}개 · ` : ""}발표 노트 열기</button></div>`;
-    })()}
-    <div class="card"><h3>할 일</h3>
-      ${todos.length ? todos.map((t) => `<div class="todo-item" data-go="${t.tab}" role="button" tabindex="0">
-        <span class="dot"></span><span class="txt">${esc(t.text)}</span><span class="chev">›</span></div>`).join("") : `<p class="muted">할 일이 없어요. 완벽해요 ✨</p>`}
-    </div>
-    ${(() => {
-      const k = keynoteInfo(), kn = keynoteSessions();
-      const who = (s) => {
-        const n = (s.speakers || []).map((x) => String(x).split(" · ")[0]);
-        return n.length > 2 ? `${n.slice(0, 2).join(", ")} 외 ${n.length - 2}명` : n.join(", ");
-      };
-      const places = [...new Set(kn.map((s) => shortVenue(s.venue)))].join(", ");
-      return `<div class="card"><h3>🎤 키노트</h3>
-        ${kn.length ? kn.map((s) => {
-          const on = st.favorites.includes(s.session_id);
-          return `<div class="sg-row">
-            <div class="sg-main" data-kn-open="${esc(s.session_id)}" role="button" tabindex="0">
-              <b>${esc(s.title)}</b>
-              <span class="muted">${esc(dayLabel(s.date))} ${esc(s.start_time)}–${esc(s.end_time)}${who(s) ? " · " + esc(who(s)) : ""}</span>
-            </div>
-            <div class="sg-act"><button class="sg-btn${on ? " on" : " primary"}" data-kn-fav="${esc(s.session_id)}">${on ? "담김 ✓" : "담기"}</button></div>
-          </div>`;
-        }).join("") +
-          (() => {
-            const left = kn.filter((s) => !st.favorites.includes(s.session_id)).length;
-            return left > 1 ? `<button class="btn ghost block small" id="kn-all">키노트 ${left}개 모두 담기</button>` : "";
-          })() +
-          `<p class="muted" style="font-size:12px;margin:6px 0 0;">📍 ${esc(places)} · 담으면 내 일정 시간표에 들어가요.${k.note ? " " + esc(k.note) : ""}</p>`
-        : `<p class="muted" style="font-size:13px;margin:0;">공식 일정·연사는 아직 공개 전이에요.</p>`}
-        ${k.korean_interpretation ? `<div class="notice" style="margin-bottom:0;">🇰🇷 ${esc(k.korean_interpretation_note || "키노트 한국어 실시간 통역 제공")}${k.livestream ? ` · ${esc(k.livestream)}` : ""}</div>` : ""}
-      </div>
-      <div class="card"><h3>추후 확인</h3>
-        <div class="muted" style="font-size:13px;">셔틀 세부 노선·시간표 — 공식 발표 시 앱에 반영됩니다.</div>
       </div>`;
-    })()}`;
-  $$("#view-home [data-go]").forEach((el) => el.onclick = () => switchTab(el.dataset.go));
+
+  const upcoming = `<div id="home-upcoming" class="span-2">${Planner.upcomingHTML()}</div>`;
+
+  const recCard = (() => {
+    if (ph === "after" || pending) return "";
+    const prof = st.profile || {};
+    const hasInterests = (prof.topics || []).length || (prof.services || []).length;
+    if (!hasInterests) {
+      return `<div class="card"><h3>✨ 맞춤 세션 추천</h3>
+        <p class="muted" style="margin:0 0 8px;">관심 토픽·AWS 서비스를 설정하면 2,200여 개 세션 중 나에게 맞는 걸 골라 드려요.</p>
+        <button class="btn ghost block small" id="home-rec-profile">관심사 설정하기</button></div>`;
+    }
+    const recs = ph === "during"
+      ? Suggest.recommended(3, (s) => s.date > today || (s.date === today && s.start_time > nowHM))
+      : Suggest.recommended(4);
+    if (!recs.length) return "";
+    return `<div class="card"><h3>✨ 나를 위한 추천 세션</h3>
+      <p class="muted" style="font-size:12px;margin:0 0 6px;">관심 토픽·서비스 기준 · 아직 안 담은 세션이에요.</p>
+      <div id="home-rec-list">${recs.map((s) => Sessions.recRowHTML(s)).join("")}</div>
+      <button class="btn ghost block small" id="home-rec-more">추천 세션 더 보기</button></div>`;
+  })();
+
+  const newsCard = (() => {
+    const items = News.items();
+    if (!items.length && today < EVENT_START) return "";
+    return `<div class="card"><h3>📣 신규 발표 노트</h3>
+      ${items.length ? News.rowsHTML(items.slice(0, 3)) : `<p class="muted" style="margin:0;">키노트에서 들은 새 서비스·기능을 적어 두면 관련 세션을 바로 찾아 줘요.</p>`}
+      <button class="btn ghost block small" id="home-news">${items.length > 3 ? `전체 ${items.length}개 · ` : ""}발표 노트 열기</button></div>`;
+  })();
+
+  const todoCard = `<div class="card"><h3>할 일</h3>
+    ${todos.length ? todos.map((t, i) => `<div class="todo-item" data-todo-i="${i}" role="button" tabindex="0">
+      <span class="dot"></span><span class="txt">${esc(t.text)}</span><span class="chev">›</span></div>`).join("") : `<p class="muted">할 일이 없어요. 완벽해요 ✨</p>`}
+  </div>`;
+
+  const keynoteCard = (() => {
+    const k = keynoteInfo(), kn = keynoteSessions();
+    if (ph === "after" || (ph === "during" && !kn.some((s) => s.date >= today))) return "";
+    const who = (s) => {
+      const n = (s.speakers || []).map((x) => String(x).split(" · ")[0]);
+      return n.length > 2 ? `${n.slice(0, 2).join(", ")} 외 ${n.length - 2}명` : n.join(", ");
+    };
+    const places = [...new Set(kn.map((s) => shortVenue(s.venue)))].join(", ");
+    return `<div class="card"><h3>🎤 키노트</h3>
+      ${kn.length ? kn.map((s) => {
+        const on = st.favorites.includes(s.session_id);
+        return `<div class="sg-row">
+          <div class="sg-main" data-kn-open="${esc(s.session_id)}" role="button" tabindex="0">
+            <b>${esc(s.title)}</b>
+            <span class="muted">${esc(dayLabel(s.date))} ${esc(s.start_time)}–${esc(s.end_time)}${who(s) ? " · " + esc(who(s)) : ""}</span>
+          </div>
+          <div class="sg-act"><button class="sg-btn${on ? " on" : " primary"}" data-kn-fav="${esc(s.session_id)}">${on ? "담김 ✓" : "담기"}</button></div>
+        </div>`;
+      }).join("") +
+        (() => {
+          const left = kn.filter((s) => !st.favorites.includes(s.session_id)).length;
+          return left > 1 ? `<button class="btn ghost block small" id="kn-all">키노트 ${left}개 모두 담기</button>` : "";
+        })() +
+        `<p class="muted" style="font-size:12px;margin:6px 0 0;">📍 ${esc(places)} · 담으면 내 일정 시간표에 들어가요.${k.note ? " " + esc(k.note) : ""}</p>`
+      : `<p class="muted" style="font-size:13px;margin:0;">공식 일정·연사는 아직 공개 전이에요.</p>`}
+      ${k.korean_interpretation ? `<div class="notice" style="margin-bottom:0;">🇰🇷 ${esc(k.korean_interpretation_note || "키노트 한국어 실시간 통역 제공")}${k.livestream ? ` · ${esc(k.livestream)}` : ""}</div>` : ""}
+    </div>`;
+  })();
+
+  const recapCard = (() => {
+    if (ph !== "after") return "";
+    const planned = Object.values(st.daily_plan || {}).reduce((a, d) => a + (d || []).length, 0);
+    const notes = SessionNotes.items().length;
+    const sum = (own) => st.expenses.filter((e) => e.owner === own).reduce((a, e) => a + (+e.amount_usd || 0), 0);
+    const fmt = (n) => Number(n || 0).toLocaleString("ko-KR");
+    return `<div class="card span-2" id="home-recap"><h3>🧳 출장 정리</h3>
+      <div class="kv"><span>담은 세션</span><b>${planned}개</b></div>
+      <div class="kv"><span>세션 노트</span><b>${notes}개</b></div>
+      <div class="kv"><span>🏢 회사 지출</span><b>$${fmt(sum("company"))}</b></div>
+      <div class="kv"><span>👤 개인 지출</span><b>$${fmt(sum("personal"))}</b></div>
+      <button class="btn ghost block small" id="home-recap-notes">📝 노트 열기</button>
+    </div>`;
+  })();
+
+  const qa = HomeActions.rowHTML(ph);
+  const notice = pending ? `<div class="notice span-2">📡 세션 카탈로그 수집 대기 중 — 공식 카탈로그에서 수집하면 세션 탭이 활성화됩니다.</div>` : "";
+  const order = ph === "during" ? [hero, notice, upcoming, qa, todoCard, recCard, keynoteCard, newsCard, Expo.cardHTML()]
+    : ph === "after" ? [hero, recapCard, qa, todoCard]
+    : [hero, notice, qa, upcoming, todoCard, recCard, keynoteCard, newsCard, Expo.cardHTML()];
+  const el = $("#view-home");
+  el.innerHTML = order.join("");
+
+  HomeActions.bind(el);
+  $$("#view-home [data-todo-i]").forEach((row) => row.onclick = () => {
+    const t = todos[+row.dataset.todoI];
+    if (t.act) t.act();
+    else { if (t.seg) Guide.next = t.seg; switchTab(t.tab); }
+  });
+  const rn = $("#home-recap-notes");
+  if (rn) rn.onclick = () => Notes.open();
   Planner.bindUpcoming();
   Expo.bindCard();
   const hn = $("#home-news");
@@ -839,10 +904,10 @@ Views.home = function () {
   const rpf = $("#home-rec-profile");
   if (rpf) rpf.onclick = () => Settings.editProfile();
   const rmo = $("#home-rec-more");
-  if (rmo) rmo.onclick = () => { Sessions.sort = "recommended"; Sessions.resetFilters(); switchTab("sessions"); };
-  $$("#home-rec-list [data-rec-open]").forEach((el) => el.onclick = () => Sessions.openDetail(el.dataset.recOpen));
+  if (rmo) rmo.onclick = HomeActions.rec[2];
+  $$("#home-rec-list [data-rec-open]").forEach((row) => row.onclick = () => Sessions.openDetail(row.dataset.recOpen));
   $$("#home-rec-list [data-rec-add]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); Sessions.toggleFav(b.dataset.recAdd); Views.home(); });
-  $$("#view-home [data-kn-open]").forEach((el) => el.onclick = () => Sessions.openDetail(el.dataset.knOpen));
+  $$("#view-home [data-kn-open]").forEach((row) => row.onclick = () => Sessions.openDetail(row.dataset.knOpen));
   $$("#view-home [data-kn-fav]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); Sessions.toggleFav(b.dataset.knFav); Views.home(); });
   const knAll = $("#kn-all");
   if (knAll) knAll.onclick = () => {
