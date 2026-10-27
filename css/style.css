@@ -149,7 +149,7 @@ body {
   word-break: keep-all; overflow-wrap: break-word; /* 한글은 어절 단위로 줄바꿈 */
 }
 body.modal-open #views { overflow: hidden; }
-#app { max-width: var(--app-max, 520px); margin: 0 auto; height: 100vh; height: 100dvh; background: var(--bg);
+#app { max-width: var(--app-max, 520px); margin: 0 auto; height: 100vh; height: 100dvh; max-height: 100%; background: var(--bg); /* max-height: iOS가 상태바 높이를 dvh에 넣어도 탭바가 잘리지 않게 */
   display: flex; flex-direction: column; }
 #views { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto;
   overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
