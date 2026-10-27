@@ -888,6 +888,7 @@ Views.home = function () {
     : ph === "after" ? [hero, recapCard, qa, todoCard]
     : [hero, notice, qa, upcoming, todoCard, recCard, keynoteCard, newsCard, Expo.cardHTML()];
   const el = $("#view-home");
+  el.classList.toggle("home-grid", Layout.wide()); // 넓은 화면: 카드 2열
   el.innerHTML = order.join("");
 
   HomeActions.bind(el);

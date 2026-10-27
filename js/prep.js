@@ -171,6 +171,7 @@ const LocalGuide = {
 const Guide = {
   seg: null,
   next: null,
+  sel: {},          // 넓은 화면: 세그먼트마다 오른쪽 칸에 보이는 항목
   SEGS: [["prep", "준비"], ["local", "현지"], ["return", "귀국"]],
   defaultSeg() {
     const t = vegasDateStr();
@@ -206,7 +207,27 @@ const Guide = {
   open(key) {
     const it = this.find(key);
     if (!it) return;
-    if (it.run) it.run(); else openDrawer(it.title, it.html());
+    if (it.run) { it.run(); return; }
+    const pane = currentTab === "guide" && $("#gd-pane");
+    if (pane) { this.sel[this.seg] = key; this.paintPane(); return; }
+    openDrawer(it.title, it.html());
+  },
+  paneHTML(seg) {
+    if (seg === "return") return `<h3>✈️ 귀국 준비</h3>${LocalGuide.returnHTML()}`;
+    const list = this.items(seg).filter((x) => x.html);
+    const it = list.find((x) => x.key === this.sel[seg]) || list[0];
+    if (!it) return `<p class="split-empty">항목을 고르면 여기에 보여요</p>`;
+    this.sel[seg] = it.key;
+    return `<h3>${esc(it.title)}</h3>${it.html()}`;
+  },
+  paintPane() {
+    const pane = $("#gd-pane");
+    if (!pane) return;
+    pane.innerHTML = `<div class="guide-article">${this.paneHTML(this.seg)}</div>`;
+    pane.scrollTop = 0;
+    // 가이드 본문의 링크는 새 창으로 (앱 화면을 벗어나지 않게)
+    $$("#gd-pane a[href^='http']").forEach((a) => { a.target = "_blank"; a.rel = "noopener"; });
+    $$("#view-guide [data-gi]").forEach((b) => b.classList.toggle("on", b.dataset.gi === this.sel[this.seg]));
   },
   itemsHTML(seg) {
     return this.items(seg).map((it) =>
@@ -283,18 +304,24 @@ Views.guide = function () {
   const segBar = `<div class="seg" id="gd-seg">${Guide.SEGS.map(([v, l]) =>
     `<button class="seg-btn${v === seg ? " on" : ""}" data-gseg="${v}">${l}</button>`).join("")}</div>`;
 
+  const wide = Layout.wide();
   let body;
   if (seg === "prep") {
-    body = tripCard + departCard + packCard +
-      `<div class="card"><h3>📖 출장 가이드</h3>${Guide.itemsHTML("prep")}</div>` + reviewCard;
+    body = (wide ? `<div class="card"><h3>📖 출장 가이드</h3>${Guide.itemsHTML("prep")}</div>` + tripCard + departCard + packCard
+      : tripCard + departCard + packCard + `<div class="card"><h3>📖 출장 가이드</h3>${Guide.itemsHTML("prep")}</div>`) + reviewCard;
   } else if (seg === "local") {
     body = `<div class="card"><h3>🧭 현지 생활·이동</h3>${Guide.itemsHTML("local")}</div>`;
   } else {
     body = `<div class="card"><h3>✈️ 귀국편</h3>${inboundRows}
-        <button class="btn ghost block" id="prep-edit-trip">출장 정보 입력/수정</button></div>
-      <div class="card guide-article"><h3>✈️ 귀국 준비</h3>${LocalGuide.returnHTML()}</div>`;
+        <button class="btn ghost block" id="prep-edit-trip">출장 정보 입력/수정</button></div>` +
+      (wide ? "" : `<div class="card guide-article"><h3>✈️ 귀국 준비</h3>${LocalGuide.returnHTML()}</div>`);
   }
-  el.innerHTML = segBar + body;
+  // 넓은 화면: 왼쪽 목록 · 오른쪽 안내 본문
+  el.classList.toggle("is-split", wide);
+  el.innerHTML = wide
+    ? `<div class="split"><div class="split-list">${segBar + body}</div><aside class="split-detail" id="gd-pane" aria-label="안내"></aside></div>`
+    : segBar + body;
+  if (wide) Guide.paintPane();
 
   $$("#gd-seg [data-gseg]").forEach((b) => b.onclick = () => { Guide.seg = b.dataset.gseg; Views.guide(); });
   $$("#view-guide [data-gi]").forEach((b) => b.onclick = () => Guide.open(b.dataset.gi));

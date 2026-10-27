@@ -108,7 +108,7 @@ Views.expenses = function () {
           : `<div class="muted" style="font-size:13px;">$${fmt(totalUsd)} / $${fmt(budget)} (${Math.round(totalUsd / budget * 100)}% 사용)</div>`)
     : `<div class="muted" style="font-size:13px;">예산을 설정하면 지출을 관리할 수 있어요.</div>`;
 
-  el.innerHTML = `
+  const summaryHTML = `
     <div class="card"><h3>💰 예산</h3>
       ${budget > 0 ? `<div class="progress${barCls}"><div style="width:${pct}%"></div></div>` : ""}
       ${budgetMsg}
@@ -132,7 +132,8 @@ Views.expenses = function () {
         return Object.entries(by).sort((a, b) => b[1].usd - a[1].usd)
           .map(([k, v]) => `<div class="kv"><span>${esc(EXP_CATS[k] || k)}</span><b>$${fmt(v.usd)} <span class="muted" style="font-weight:400;">· ₩${fmt(v.krw)}</span></b></div>`).join("");
       })()}
-    </div>` : ""}
+    </div>` : ""}`;
+  const listHTML = `
     ${ordered.length ? ordered.map((e) => `
       <div class="card ex-card">
         <div class="ex-main">
@@ -149,7 +150,9 @@ Views.expenses = function () {
         </div>
         ${e.receipt_img ? `<button class="rc-thumb" data-rcview="${esc(e.receipt_img)}" data-rctitle="${esc(e.desc || EXP_CATS[e.category] || "")}" aria-label="영수증 사진 보기"><img data-rcimg="${esc(e.receipt_img)}" alt=""></button>` : ""}
       </div>`).join("")
-      : `<div class="empty-state"><div class="big">🧾</div><p>${expFilter === "all" ? "기록된 지출이 없어요" : `${expFilter === "company" ? "회사" : "개인"} 지출이 없어요`}</p></div>`}
+      : `<div class="empty-state"><div class="big">🧾</div><p>${expFilter === "all" ? "기록된 지출이 없어요" : `${expFilter === "company" ? "회사" : "개인"} 지출이 없어요`}</p></div>`}`;
+  // 넓은 화면: 왼쪽 요약(예산·합계·분류) · 오른쪽 지출 목록
+  el.innerHTML = (Layout.wide() ? `<div class="ex-cols"><div class="ex-side">${summaryHTML}</div><div class="ex-list">${listHTML}</div></div>` : summaryHTML + listHTML) + `
     <button id="ex-fab" class="fab fab-text" aria-label="지출 추가">＋</button>`;
   el.classList.add("has-fab");
 

@@ -821,3 +821,14 @@ html[data-size="expanded"] .split { grid-template-columns: minmax(360px, 2fr) 3f
 /* ---------- planner: 넓은 화면 2열 ---------- */
 .pl-cols { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 12px; align-items: start; }
 .pl-side { position: sticky; top: 0; }
+
+/* ---------- 넓은 화면: 홈 2열 · 가이드 본문 칸 · 정산 2열 ---------- */
+#view-home.home-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+#view-home.home-grid > .card, #view-home.home-grid > .qa-row, #view-home.home-grid > .notice { margin: 0; }
+#view-home.home-grid > #home-upcoming > .card { margin: 0; }
+#view-home.home-grid > .span-2 { grid-column: 1 / -1; }
+#gd-pane .guide-article h3 { margin-top: 0; }
+#gd-pane .guide-article { font-size: 14.5px; }
+.guide-item.on { box-shadow: 0 0 0 2px var(--select-border); }
+.ex-cols { display: grid; grid-template-columns: minmax(300px, 2fr) minmax(0, 3fr); gap: 12px; align-items: start; }
+.ex-side { position: sticky; top: 0; }
