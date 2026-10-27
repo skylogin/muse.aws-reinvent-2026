@@ -8,7 +8,7 @@ const SORT_LABEL = { time: "시간순", recommended: "추천순", level: "레벨
 /* 세션 타입·난이도·형식 한국어 표기 */
 const TYPE_KO = { breakout: "브레이크아웃", workshop: "워크숍", "chalk-talk": "초크토크", "builders-session": "빌더 세션",
   "code-talk": "코드토크", "lightning-talk": "라이트닝 토크", "hands-on-lab": "핸즈온 랩", "game-day": "게임데이",
-  bootcamp: "부트캠프", "exam-prep": "시험 대비", keynote: "키노트" };
+  bootcamp: "부트캠프", "exam-prep": "시험 대비", keynote: "키노트", mainstage: "메인 스테이지" };
 const TYPE_TIP = {
   workshop: "💻 노트북 지참 · 강사와 함께 직접 따라 하는 실습",
   bootcamp: "💻 노트북 지참 · 긴 시간 진행되는 심화 실습",
