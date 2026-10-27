@@ -816,46 +816,6 @@ const Planner = {
   }
 };
 
-/* ---- route info (drawers) ---- */
-const RouteInfo = {
-  taxiZone: { "MGM Grand": "Zone 1 · $21.25", "Caesars Palace": "Zone 2 · $25.25", "Wynn": "Zone 3 · $29.25" },
-  venuesHTML() {
-    const venues = (window.APP_DATA.event_info.venues || []);
-    return `<p class="muted" style="font-size:13px;">베뉴 6곳 — 탭하면 Google Maps가 열립니다.</p>` + venues.map((v) => `
-      <div class="kv"><span><strong>${esc(v.name)}</strong><br>
-        <span class="muted" style="font-size:12px;">${esc(v.address || "")}${this.taxiZone[v.name] ? `<br>택시 ${esc(this.taxiZone[v.name])}` : ""}</span></span>
-        <a class="btn ghost small map-btn" target="_blank" rel="noopener"
-           href="https://www.google.com/maps/search/?api=1&query=${v.lat},${v.lng}">📍 지도</a>
-      </div>`).join("") + this.walkTableHTML(venues);
-  },
-  /* 베뉴 간 도보 거리 (가까운 순) */
-  walkTableHTML(venues) {
-    const pairs = [];
-    venues.forEach((a, i) => venues.slice(i + 1).forEach((b) => pairs.push([a, b, Planner.havKm(a, b)])));
-    pairs.sort((x, y) => x[2] - y[2]);
-    return `<h3>🚶 베뉴 간 도보 거리</h3>
-      <p class="muted" style="font-size:12px;margin:0 0 4px;">직선거리 기준 추정이에요. 실제로는 카지노 내부·육교를 지나 더 걸릴 수 있어요.</p>` +
-      pairs.map(([a, b, km]) => `<div class="kv"><span>${esc(shortVenue(a.name))} ↔ ${esc(shortVenue(b.name))}</span><b>약 ${Planner.walkMinutes(km)}분 · ${km.toFixed(1)}km</b></div>`).join("");
-  },
-  shuttleHTML() {
-    const sh = window.APP_DATA.event_info.shuttle || {};
-    return `<p style="font-size:14px;">${esc(sh.note || "베뉴 간 셔틀 운행 (배지 필수)")}</p>
-      <p><span class="badge warn">시간표 미공개</span></p>
-      <p class="muted" style="font-size:13px;">세부 노선·시간표는 가을 중 공개 예정 — 출발 직전 AWS Events 앱에서 확인하세요.</p>
-      <div class="notice">💡 배지 제시로 <strong>라스베가스 모노레일 무료</strong> (SAHARA ↔ MGM Grand, 공항 미연결)</div>`;
-  },
-  airportHTML() {
-    const sec = (window.APP_DATA.prep_sections || []).find((s) => s.id.includes("공항"));
-    return sec ? sec.html : `<p class="muted">가이드 준비 중</p>`;
-  },
-  strategyHTML() {
-    return `<p>세션을 <strong>베뉴 블록 단위</strong>로 묶고, 세션 사이 <strong>최소 40분</strong> 여유를 두세요.</p>
-      <p>시간표와 '동선'에서 베뉴가 바뀌는 구간마다 이동 시간·수단과 <strong>늦어도 출발할 시각</strong>을 계산해 줍니다.
-      <span class="st-text st-ok">초록</span>은 여유, <span class="st-text st-tight">주황</span>은 빠듯, <span class="st-text st-bad">빨강</span>은 시간 부족이에요.</p>
-      <p class="muted" style="font-size:13px;">다녀온 사람들 팁: 하루 일정은 <strong>베뉴 2곳(오전/오후)</strong>으로만 짜고, 이동에 1시간 여유를 두세요.</p>`;
-  }
-};
-
 Views.planner = function () {
   if (!plannerManual) plannerDay = todayClamped(); // 탭을 열 때마다 현지 날짜로
   if (!DAYS.includes(plannerDay)) plannerDay = "2026-11-30";
@@ -886,10 +846,7 @@ Views.planner = function () {
     <div class="card"><h3>🧭 ${dayLabel(plannerDay)} 동선</h3>
       ${route || `<p class="muted">이 날은 이동할 일정이 없어요.</p>`}
       <div class="route-info">
-        <button class="btn ghost small" id="ri-venues">🗺️ 베뉴·지도</button>
-        <button class="btn ghost small" id="ri-shuttle">🚌 셔틀</button>
-        <button class="btn ghost small" id="ri-airport">✈️ 공항→호텔</button>
-        <button class="btn ghost small" id="ri-strategy">📌 이동 전략</button>
+        <button class="btn ghost small" id="ri-guide">🗺️ 베뉴·셔틀·이동 정보</button>
       </div>
     </div>
     <div class="card"><h3>고정 이벤트 표시</h3>
@@ -908,10 +865,7 @@ Views.planner = function () {
   if (act) act.scrollIntoView({ block: "nearest", inline: "center" });
   const goS = $("#pl-go-sessions");
   if (goS) goS.onclick = () => switchTab("sessions");
-  $("#ri-venues").onclick = () => openDrawer("베뉴 6곳", RouteInfo.venuesHTML());
-  $("#ri-shuttle").onclick = () => openDrawer("베뉴 간 셔틀", RouteInfo.shuttleHTML());
-  $("#ri-airport").onclick = () => openDrawer("공항 → 호텔 이동", RouteInfo.airportHTML());
-  $("#ri-strategy").onclick = () => openDrawer("베뉴 이동 전략", RouteInfo.strategyHTML());
+  $("#ri-guide").onclick = () => { Guide.next = "local"; switchTab("guide"); };
   $$("#view-planner [data-fx]").forEach((c) => c.onchange = () => Planner.toggleFixed(c.dataset.fx));
   $("#pl-ics").onclick = () => Planner.exportICS();
   $("#pl-report").onclick = () => Planner.reportView();

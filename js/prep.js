@@ -41,7 +41,7 @@ const LocalGuide = {
   },
   eventHTML() {
     const e = window.APP_DATA.event_info || {};
-    const rs = e.reserved_seating || {}, bp = e.badge_pickup || {}, rp = e.replay || {}, ml = e.meals || {};
+    const rs = e.reserved_seating || {}, bp = e.badge_pickup || {}, rp = e.replay || {};
     const li = (a) => (a || []).map((x) => `<li>${esc(x)}</li>`).join("");
     return `<h4>배지</h4>
       <ul>
@@ -59,9 +59,6 @@ const LocalGuide = {
         <li>만석이면 같은 세션의 다른 회차(코드 끝 -R1, -R2…)를 찾아보세요 — 세션 상세에 '다른 회차'로 나와요</li>
         <li>키노트와 강의식 브레이크아웃은 예약 없이 들어갈 수 있어요</li>
       </ul>
-      <h4>식사</h4>
-      <p>${esc(ml.note || "컨퍼런스 기간 베뉴별 식사 제공")}</p>
-      <p class="muted">내 일정 → 동선에서 점심 시간대 빈 시간을 알려 줘요.</p>
       ${rp.date ? `<h4>re:Play</h4>
       <p>${esc(dayLabel(rp.date))} ${esc(rp.time || "")} · ${esc(rp.venue || "")}</p>
       <p>${esc(rp.note || "")}</p>
@@ -170,8 +167,56 @@ const LocalGuide = {
   }
 };
 
+/* 가이드 탭: 준비 · 현지 · 귀국 세그먼트 (기본은 날짜 기준, 다른 화면에서 Guide.next로 한 번만 지정) */
+const Guide = {
+  seg: null,
+  next: null,
+  SEGS: [["prep", "준비"], ["local", "현지"], ["return", "귀국"]],
+  defaultSeg() {
+    const t = vegasDateStr();
+    return t < "2026-11-29" ? "prep" : t <= "2026-12-03" ? "local" : "return";
+  },
+  resolve() {
+    if (this.next) { this.seg = this.next; this.next = null; }
+    else if (!this.seg) this.seg = this.defaultSeg();
+    return this.seg;
+  },
+  /* 세그먼트의 안내 항목: html()은 드로어(넓은 화면에선 오른쪽 칸), run()은 시트 */
+  items(seg) {
+    if (seg === "prep") {
+      return (window.APP_DATA.prep_sections || []).filter((x) => !String(x.id).includes("공항"))
+        .map((x) => ({ key: "sec:" + x.id, label: "📘 " + x.title, title: x.title, html: () => x.html }));
+    }
+    if (seg === "local") {
+      return [
+        { key: "venues", label: "🗺️ 베뉴·지도", title: "베뉴 6곳", html: () => RouteInfo.venuesHTML() },
+        { key: "shuttle", label: "🚌 셔틀", title: "베뉴 간 셔틀", html: () => RouteInfo.shuttleHTML() },
+        { key: "strategy", label: "📌 이동 전략", title: "베뉴 이동 전략", html: () => RouteInfo.strategyHTML() },
+        { key: "airport", label: "✈️ 공항 → 호텔", title: "공항 → 호텔 이동", html: () => RouteInfo.airportHTML() },
+        { key: "event", label: "🎫 배지·예약석", title: "🎫 배지·예약석", html: () => LocalGuide.eventHTML() },
+        { key: "meals", label: "🍽️ 식사·맛집", title: "🍽️ 식사·맛집", html: () => LocalGuide.mealsHTML() },
+        { key: "tips", label: "💵 팁 계산기", title: "💵 팁 계산기", run: () => LocalGuide.openTips() },
+        { key: "stores", label: "🛒 편의점·약국", title: "🛒 편의점·약국", html: () => LocalGuide.storesHTML() },
+        { key: "emergency", label: "🆘 응급·안전", title: "🆘 응급·안전", html: () => LocalGuide.emergencyHTML() }
+      ];
+    }
+    return [];
+  },
+  find(key) { for (const [v] of this.SEGS) { const it = this.items(v).find((x) => x.key === key); if (it) return it; } return null; },
+  open(key) {
+    const it = this.find(key);
+    if (!it) return;
+    if (it.run) it.run(); else openDrawer(it.title, it.html());
+  },
+  itemsHTML(seg) {
+    return this.items(seg).map((it) =>
+      `<button class="btn ghost block left info-btn guide-item" data-gi="${esc(it.key)}">${esc(it.label)}</button>`).join("");
+  }
+};
+
 Views.guide = function () {
   const el = $("#view-guide");
+  const seg = Guide.resolve();
   const t = S().trip;
   const f = t.flights, h = t.hotel;
   const missing = (v) => !v ? `<span class="badge warn">미정</span>` : esc(v);
@@ -181,17 +226,18 @@ Views.guide = function () {
   const dtasks = DepartTasks.all();
   const dDone = S().depart_done || {};
   const dtDoneCount = dtasks.filter((x) => dDone[x.id]).length;
-  // 11/30(행사 시작)부터는 현지 가이드가 우선 — 출발 준비·준비물은 아래로 내림
-  const tripActive = vegasDateStr() >= EVENT_START;
+
+  const inboundRows = `
+      <h4 style="margin:8px 0 4px;font-size:14px;">오는 편 (LAS → ICN) ${missing(f.inbound.flight_no)}</h4>
+      <div class="kv"><span>편명</span><b>${esc(f.inbound.flight_no) || "-"}</b></div>
+      <div class="kv"><span>출발 → 도착</span><b>${f.inbound.dep_time ? esc(f.inbound.dep_time) + " → " + esc(f.inbound.arr_time) : "-"}</b></div>`;
 
   const tripCard = `
     <div class="card"><h3>✈️ 내 출장 정보</h3>
       <h4 style="margin:8px 0 4px;font-size:14px;">가는 편 (ICN → LAS) ${missing(f.outbound.flight_no)}</h4>
       <div class="kv"><span>편명</span><b>${esc(f.outbound.flight_no) || "-"}</b></div>
       <div class="kv"><span>출발 → 도착</span><b>${f.outbound.dep_time ? esc(f.outbound.dep_time) + " → " + esc(f.outbound.arr_time) : "-"}</b></div>
-      <h4 style="margin:8px 0 4px;font-size:14px;">오는 편 (LAS → ICN) ${missing(f.inbound.flight_no)}</h4>
-      <div class="kv"><span>편명</span><b>${esc(f.inbound.flight_no) || "-"}</b></div>
-      <div class="kv"><span>출발 → 도착</span><b>${f.inbound.dep_time ? esc(f.inbound.dep_time) + " → " + esc(f.inbound.arr_time) : "-"}</b></div>
+      ${inboundRows}
       <h4 style="margin:8px 0 4px;font-size:14px;">호텔 ${missing(h.name)}</h4>
       <div class="kv"><span>호텔명</span><b>${esc(h.name) || "-"}</b></div>
       <div class="kv"><span>체크인 → 아웃</span><b>${h.check_in ? esc(h.check_in) + " → " + esc(h.check_out) : "-"}</b></div>
@@ -227,24 +273,6 @@ Views.guide = function () {
       <button class="btn ghost block small" id="ck-add" style="margin-top:8px;">＋ 항목 추가</button>
     </div>`;
 
-  const guideCard = `
-    <div class="card"><h3>📖 출장 가이드</h3>
-      ${(window.APP_DATA.prep_sections || []).map((s, i) => `
-        <button class="btn ghost block left info-btn" data-guide="${i}">📘 ${esc(s.title)}</button>`).join("")}
-    </div>`;
-
-  const localCard = `
-    <div class="card"><h3>🧭 현지 생활 가이드</h3>
-      <div class="route-info" style="margin:0;padding:0;border:0;">
-        <button class="btn ghost small" data-lg="emergency">🆘 응급·안전</button>
-        <button class="btn ghost small" data-lg="event">🎫 배지·예약석·식사</button>
-        <button class="btn ghost small" data-lg="tips">💵 팁 계산기</button>
-        <button class="btn ghost small" data-lg="stores">🛒 편의점·약국</button>
-        <button class="btn ghost small" data-lg="meals">🍽️ 식사·맛집</button>
-        <button class="btn ghost small" data-lg="return">✈️ 귀국 준비</button>
-      </div>
-    </div>`;
-
   const reviewCard = `
     <div class="card"><h3>✍️ 다녀온 사람들 후기</h3>
       <p class="muted" style="font-size:13px;">작년·재작년 참석자들의 실전 팁 모음이에요.</p>
@@ -252,16 +280,25 @@ Views.guide = function () {
         <a class="btn ghost block left info-btn" href="${r.url}" target="_blank" rel="noopener">🔗 ${esc(r.title)}<br><span class="muted" style="font-size:12px;font-weight:400;">${esc(r.desc)}</span></a>`).join("")}
     </div>`;
 
-  // 내 출장 정보는 항상 최상단. 출장 전에는 출발 준비·준비물 먼저, 11/30부터는 가이드 먼저.
-  const guides = guideCard + localCard + reviewCard;
-  const departPrep = departCard + packCard;
-  el.innerHTML = tripCard + (tripActive ? guides + departPrep : departPrep + guides);
+  const segBar = `<div class="seg" id="gd-seg">${Guide.SEGS.map(([v, l]) =>
+    `<button class="seg-btn${v === seg ? " on" : ""}" data-gseg="${v}">${l}</button>`).join("")}</div>`;
 
+  let body;
+  if (seg === "prep") {
+    body = tripCard + departCard + packCard +
+      `<div class="card"><h3>📖 출장 가이드</h3>${Guide.itemsHTML("prep")}</div>` + reviewCard;
+  } else if (seg === "local") {
+    body = `<div class="card"><h3>🧭 현지 생활·이동</h3>${Guide.itemsHTML("local")}</div>`;
+  } else {
+    body = `<div class="card"><h3>✈️ 귀국편</h3>${inboundRows}
+        <button class="btn ghost block" id="prep-edit-trip">출장 정보 입력/수정</button></div>
+      <div class="card guide-article"><h3>✈️ 귀국 준비</h3>${LocalGuide.returnHTML()}</div>`;
+  }
+  el.innerHTML = segBar + body;
+
+  $$("#gd-seg [data-gseg]").forEach((b) => b.onclick = () => { Guide.seg = b.dataset.gseg; Views.guide(); });
+  $$("#view-guide [data-gi]").forEach((b) => b.onclick = () => Guide.open(b.dataset.gi));
   $$("#view-guide [data-dt]").forEach((c) => c.onchange = () => DepartTasks.toggle(c.dataset.dt));
-  $$("#view-guide [data-guide]").forEach((b) => b.onclick = () => {
-    const s = (window.APP_DATA.prep_sections || [])[Number(b.dataset.guide)];
-    if (s) openDrawer(s.title, s.html);
-  });
   $$("#view-guide [data-ck]").forEach((c) => c.onchange = () => {
     const item = Packing.list().find((x) => x.id === c.dataset.ck);
     if (item) { item.done = c.checked; Store.save(); Views.guide(); }
@@ -270,17 +307,11 @@ Views.guide = function () {
   $$("#view-guide [data-ckdel]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); Packing.askDelete(b.dataset.ckdel); });
   const ckAdd = $("#ck-add");
   if (ckAdd) ckAdd.onclick = () => Packing.editItem(null);
-  $("#prep-edit-trip").onclick = Prep.editTrip;
-  $$("#view-guide [data-lg]").forEach((b) => b.onclick = () => {
-    const k = b.dataset.lg;
-    if (k === "tips") LocalGuide.openTips();
-    else if (k === "emergency") openDrawer("🆘 응급·안전", LocalGuide.emergencyHTML());
-    else if (k === "event") openDrawer("🎫 배지·예약석·식사", LocalGuide.eventHTML());
-    else if (k === "meals") openDrawer("🍽️ 식사·맛집", LocalGuide.mealsHTML());
-    else if (k === "return") openDrawer("✈️ 귀국 준비", LocalGuide.returnHTML());
-    else openDrawer("🛒 편의점·약국", LocalGuide.storesHTML());
-  });
+  const et = $("#prep-edit-trip");
+  if (et) et.onclick = Prep.editTrip;
 };
+/* 탭을 떠나면 다음 방문 때 날짜 기준 세그먼트로 */
+Views.guide.onLeave = () => { Guide.seg = null; };
 
 const Prep = {
   editTrip() {
@@ -316,9 +347,45 @@ const Prep = {
       Store.save(); closeModal(); Views.guide(); toast("출장 정보를 저장했어요");
     };
     $("#tr-cancel").onclick = closeModal;
+  }
+};
+
+/* ---- route info (drawers) ---- */
+const RouteInfo = {
+  taxiZone: { "MGM Grand": "Zone 1 · $21.25", "Caesars Palace": "Zone 2 · $25.25", "Wynn": "Zone 3 · $29.25" },
+  venuesHTML() {
+    const venues = (window.APP_DATA.event_info.venues || []);
+    return `<p class="muted" style="font-size:13px;">베뉴 6곳 — 탭하면 Google Maps가 열립니다.</p>` + venues.map((v) => `
+      <div class="kv"><span><strong>${esc(v.name)}</strong><br>
+        <span class="muted" style="font-size:12px;">${esc(v.address || "")}${this.taxiZone[v.name] ? `<br>택시 ${esc(this.taxiZone[v.name])}` : ""}</span></span>
+        <a class="btn ghost small map-btn" target="_blank" rel="noopener"
+           href="https://www.google.com/maps/search/?api=1&query=${v.lat},${v.lng}">📍 지도</a>
+      </div>`).join("") + this.walkTableHTML(venues);
   },
-  openSection(secId) {
-    const s = (window.APP_DATA.prep_sections || []).find((x) => x.id === secId);
-    if (s) openDrawer(s.title, s.html);
+  /* 베뉴 간 도보 거리 (가까운 순) */
+  walkTableHTML(venues) {
+    const pairs = [];
+    venues.forEach((a, i) => venues.slice(i + 1).forEach((b) => pairs.push([a, b, Planner.havKm(a, b)])));
+    pairs.sort((x, y) => x[2] - y[2]);
+    return `<h3>🚶 베뉴 간 도보 거리</h3>
+      <p class="muted" style="font-size:12px;margin:0 0 4px;">직선거리 기준 추정이에요. 실제로는 카지노 내부·육교를 지나 더 걸릴 수 있어요.</p>` +
+      pairs.map(([a, b, km]) => `<div class="kv"><span>${esc(shortVenue(a.name))} ↔ ${esc(shortVenue(b.name))}</span><b>약 ${Planner.walkMinutes(km)}분 · ${km.toFixed(1)}km</b></div>`).join("");
+  },
+  shuttleHTML() {
+    const sh = window.APP_DATA.event_info.shuttle || {};
+    return `<p style="font-size:14px;">${esc(sh.note || "베뉴 간 셔틀 운행 (배지 필수)")}</p>
+      <p><span class="badge warn">시간표 미공개</span></p>
+      <p class="muted" style="font-size:13px;">세부 노선·시간표는 가을 중 공개 예정 — 출발 직전 AWS Events 앱에서 확인하세요.</p>
+      <div class="notice">💡 배지 제시로 <strong>라스베가스 모노레일 무료</strong> (SAHARA ↔ MGM Grand, 공항 미연결)</div>`;
+  },
+  airportHTML() {
+    const sec = (window.APP_DATA.prep_sections || []).find((s) => s.id.includes("공항"));
+    return sec ? sec.html : `<p class="muted">가이드 준비 중</p>`;
+  },
+  strategyHTML() {
+    return `<p>세션을 <strong>베뉴 블록 단위</strong>로 묶고, 세션 사이 <strong>최소 40분</strong> 여유를 두세요.</p>
+      <p>시간표와 '동선'에서 베뉴가 바뀌는 구간마다 이동 시간·수단과 <strong>늦어도 출발할 시각</strong>을 계산해 줍니다.
+      <span class="st-text st-ok">초록</span>은 여유, <span class="st-text st-tight">주황</span>은 빠듯, <span class="st-text st-bad">빨강</span>은 시간 부족이에요.</p>
+      <p class="muted" style="font-size:13px;">다녀온 사람들 팁: 하루 일정은 <strong>베뉴 2곳(오전/오후)</strong>으로만 짜고, 이동에 1시간 여유를 두세요.</p>`;
   }
 };
