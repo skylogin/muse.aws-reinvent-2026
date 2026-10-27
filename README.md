@@ -7,6 +7,7 @@
 - `main`에 push하면 GitHub Actions(`.github/workflows/pages.yml`)가 `node scripts/check-data.js`를 실행합니다.
 - 점검을 통과한 커밋만 GitHub Pages에 배포합니다. 점검이 실패하면 이전 배포가 그대로 남습니다.
 - 처음 한 번: 저장소 **Settings → Pages → Build and deployment → Source**를 **GitHub Actions**로 바꿉니다.
+- 화면 주소: `#/home`, `#/sessions`, `#/planner`, `#/guide`, `#/expenses`, `#/settings`, `#/expenses/add` (홈 화면 아이콘 바로가기에서 사용)
 
 ## 데이터 갱신 규칙
 
