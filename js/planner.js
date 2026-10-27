@@ -806,7 +806,8 @@ const Planner = {
           </div>
         </div>`;
       root.classList.add("open");
-      $("#rp-back").onclick = () => root.classList.remove("open");
+      Nav.sync();
+      $("#rp-back").onclick = () => { root.classList.remove("open"); Nav.sync(); };
       const prev = $("#rp-prev"), next = $("#rp-next");
       if (prev) prev.onclick = () => { if (idx > 0) { idx--; render(); } };
       if (next) next.onclick = () => { if (idx < DAYS.length - 1) { idx++; render(); } };

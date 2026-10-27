@@ -5,6 +5,7 @@ Views.settings = function () {
   const st = S();
   const topics = st.profile.topics;
   $("#view-settings").innerHTML = `
+    <div class="view-back"><button class="btn ghost small" id="set-back" type="button" aria-label="홈으로">◀ 홈</button><h2>설정</h2></div>
     <div class="card"><h3>👤 프로필</h3>
       <div class="kv"><span>닉네임</span><b>${esc(st.profile.nickname) || "게스트"}</b></div>
       <div class="kv"><span>관심 서비스</span><b>${(st.profile.services || []).length ? esc((st.profile.services || []).map(shortService).join(", ")) : "미설정"}</b></div>
@@ -51,6 +52,7 @@ Views.settings = function () {
       <div class="kv"><span>데이터 보관</span><b>이 기기(localStorage)</b></div>
     </div>`;
 
+  $("#set-back").onclick = () => switchTab("home");
   $("#set-profile").onclick = Settings.editProfile;
   $("#set-transfer").onclick = () => TransferUI.showExport();
   $("#set-backup").onclick = () => TransferUI.exportFile();

@@ -170,8 +170,8 @@ const LocalGuide = {
   }
 };
 
-Views.prep = function () {
-  const el = $("#view-prep");
+Views.guide = function () {
+  const el = $("#view-guide");
   const t = S().trip;
   const f = t.flights, h = t.hotel;
   const missing = (v) => !v ? `<span class="badge warn">미정</span>` : esc(v);
@@ -257,21 +257,21 @@ Views.prep = function () {
   const departPrep = departCard + packCard;
   el.innerHTML = tripCard + (tripActive ? guides + departPrep : departPrep + guides);
 
-  $$("#view-prep [data-dt]").forEach((c) => c.onchange = () => DepartTasks.toggle(c.dataset.dt));
-  $$("#view-prep [data-guide]").forEach((b) => b.onclick = () => {
+  $$("#view-guide [data-dt]").forEach((c) => c.onchange = () => DepartTasks.toggle(c.dataset.dt));
+  $$("#view-guide [data-guide]").forEach((b) => b.onclick = () => {
     const s = (window.APP_DATA.prep_sections || [])[Number(b.dataset.guide)];
     if (s) openDrawer(s.title, s.html);
   });
-  $$("#view-prep [data-ck]").forEach((c) => c.onchange = () => {
+  $$("#view-guide [data-ck]").forEach((c) => c.onchange = () => {
     const item = Packing.list().find((x) => x.id === c.dataset.ck);
-    if (item) { item.done = c.checked; Store.save(); Views.prep(); }
+    if (item) { item.done = c.checked; Store.save(); Views.guide(); }
   });
-  $$("#view-prep [data-ckedit]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); Packing.editItem(b.dataset.ckedit); });
-  $$("#view-prep [data-ckdel]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); Packing.askDelete(b.dataset.ckdel); });
+  $$("#view-guide [data-ckedit]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); Packing.editItem(b.dataset.ckedit); });
+  $$("#view-guide [data-ckdel]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); Packing.askDelete(b.dataset.ckdel); });
   const ckAdd = $("#ck-add");
   if (ckAdd) ckAdd.onclick = () => Packing.editItem(null);
   $("#prep-edit-trip").onclick = Prep.editTrip;
-  $$("#view-prep [data-lg]").forEach((b) => b.onclick = () => {
+  $$("#view-guide [data-lg]").forEach((b) => b.onclick = () => {
     const k = b.dataset.lg;
     if (k === "tips") LocalGuide.openTips();
     else if (k === "emergency") openDrawer("🆘 응급·안전", LocalGuide.emergencyHTML());
@@ -313,7 +313,7 @@ const Prep = {
       f.outbound = { airline: g("tr-ob-al"), flight_no: g("tr-ob-no"), dep_time: g("tr-ob-dep"), arr_time: g("tr-ob-arr"), terminal: "" };
       f.inbound = { airline: g("tr-ib-al"), flight_no: g("tr-ib-no"), dep_time: g("tr-ib-dep"), arr_time: g("tr-ib-arr"), terminal: "" };
       t.hotel = { name: g("tr-ht-name"), check_in: g("tr-ht-in"), check_out: g("tr-ht-out"), address: g("tr-ht-addr"), near_venue: g("tr-ht-near") };
-      Store.save(); closeModal(); Views.prep(); toast("출장 정보를 저장했어요");
+      Store.save(); closeModal(); Views.guide(); toast("출장 정보를 저장했어요");
     };
     $("#tr-cancel").onclick = closeModal;
   },

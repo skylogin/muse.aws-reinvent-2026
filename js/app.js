@@ -24,9 +24,10 @@ function openModal(html, opts) {
   ov._sticky = !!(opts && opts.sticky);
   ov.addEventListener("click", (e) => { if (e.target === ov && !ov._sticky) closeModal(); });
   document.body.classList.add("modal-open");
+  Nav.sync();
   return ov;
 }
-function closeModal() { closeLayer(); $("#modal-root").innerHTML = ""; document.body.classList.remove("modal-open"); }
+function closeModal() { closeLayer(); $("#modal-root").innerHTML = ""; document.body.classList.remove("modal-open"); Nav.sync(); }
 
 /* 레이어 팝업: 시트 위에 겹쳐 뜨는 작은 창 (닫으면 아래 시트로 돌아감) */
 function openLayer(o) {
@@ -40,8 +41,9 @@ function openLayer(o) {
   document.body.appendChild(el);
   el.addEventListener("click", (e) => { if (e.target === el) closeLayer(); });
   $(".bs-close", el).onclick = closeLayer;
+  Nav.sync();
 }
-function closeLayer() { const el = $("#layer-overlay"); if (el) el.remove(); }
+function closeLayer() { const el = $("#layer-overlay"); if (el) { el.remove(); Nav.sync(); } }
 
 /* 하단 시트 (bottom sheet): 손잡이 + 제목/닫기 + 스크롤 본문 + 하단 고정 버튼
    opts: { title, body, actions, sticky } — 손잡이·제목줄을 아래로 끌면 닫힘 */
@@ -61,7 +63,8 @@ function openSheet(opts) {
   ov._sticky = !!opts.sticky;
   document.body.classList.add("modal-open");
   const dismiss = () => {
-    if (!$("#modal-overlay")) return;
+    if (!$("#modal-overlay") || ov._closing) return;
+    ov._closing = true; // 닫히는 중: 뒤로가기 깊이 계산에서 바로 빠짐 (Nav.overlayCount)
     sheet.style.transition = "transform .2s ease";
     sheet.style.transform = "translateY(100%)";
     ov.style.transition = "opacity .2s ease";
@@ -85,18 +88,13 @@ function openSheet(opts) {
     if (dy > 80) dismiss();
     else { sheet.style.transition = "transform .2s ease"; sheet.style.transform = ""; }
   });
+  Nav.sync();
   return ov;
 }
 
-/* Esc: 모달 → 드로어 → 보고서 순으로 닫기 (PC·키보드 사용 시) */
+/* Esc: 레이어 → 모달 → 드로어 → 보고서 → 설치 안내 순으로 닫기 (PC·키보드 사용 시) */
 document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape") return;
-  if ($("#layer-overlay")) { closeLayer(); return; }
-  const ov = $("#modal-overlay");
-  if (ov) { if (!ov._sticky) (ov._dismiss || closeModal)(); return; }
-  if ($("#drawer-overlay")) { closeDrawer(); return; }
-  const rp = $("#report-screen.open");
-  if (rp) rp.classList.remove("open");
+  if (e.key === "Escape") Nav.closeTop();
 });
 
 /* role="button"인 div·span을 Enter·Space로 열기 (키보드·스크린리더) */
@@ -257,13 +255,129 @@ function dataAsOf() {
 const Views = {};
 let currentTab = "home";
 function switchTab(name) {
+  if (!Nav.ROUTES.includes(name)) name = "home";
+  const views = $("#views");
+  if (name !== currentTab && Views[currentTab] && Views[currentTab].onLeave) Views[currentTab].onLeave();
+  Nav.scroll[currentTab] = views.scrollTop;
   currentTab = name;
   if (name === "planner" && typeof plannerManual !== "undefined") plannerManual = false; // 들어올 때마다 현지 날짜로
-  $$("#tabbar button").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
+  $$("#tabbar button").forEach((b) => {
+    const on = b.dataset.tab === name;
+    b.classList.toggle("active", on);
+    if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+  });
   $$("#views .view").forEach((v) => v.classList.toggle("active", v.id === "view-" + name));
+  const gear = $("#hdr-settings");
+  if (gear) gear.classList.toggle("hidden", name !== "home");
   if (Views[name]) Views[name]();
-  $("#views").scrollTop = 0;
+  views.scrollTop = Nav.scroll[name] || 0;
+  Nav.sync();
 }
+
+/* ---------- 뒤로가기 (history) ----------
+   앱은 기본 항목 위에 '함정(trap)' 항목을 최대 1개만 둔다. 상태는 메모리에 두고 기록 항목의 state 값으로 판단하지 않는다.
+   홈이 아닌 탭이나 열린 레이어가 있으면(depth > 0) 함정을 하나 쌓고, 시스템 뒤로가기가 함정을 쓰면
+   맨 위 레이어를 닫거나 홈으로 돌아간 뒤 필요하면 다시 쌓는다. depth가 0이 되면 함정을 조용히 걷는다.
+   알려진 한계:
+   (a) Android Chrome은 사용자 탭 없이 쌓인 항목을 뒤로가기에서 건너뛸 수 있다. 부팅 때 쌓이는 항목(설치 안내,
+       공유 미리보기, #/expenses/add)은 첫 탭 전까지 뒤로가기로 앱을 나갈 수 있다. 탭을 한 번 하면 건너뛰지 않는다.
+   (b) 바로가기·링크로 연 화면에서 '뒤로가기 = 앱 나가기'는 첫 레이어나 탭 이동 전까지만 맞다.
+   (c) 실행 중인 앱에 외부 링크(#/…)가 들어와 홈으로 끝나면 뒤로가기를 한 번 더 눌러야 할 수 있다.
+   (d) iOS 홈 화면 앱에는 시스템 뒤로가기가 없다. ✕·아래로 밀기·◀ 버튼으로 닫는다. */
+const Nav = {
+  TABS: ["home", "sessions", "planner", "guide", "expenses"],
+  ROUTES: ["home", "sessions", "planner", "guide", "expenses", "settings"],
+  trap: false, booting: true, silent: false, inPop: false, lastHash: null,
+  scroll: {},
+  overlayCount() {
+    let n = 0;
+    if ($("#layer-overlay")) n++;
+    const m = $("#modal-overlay");
+    if (m && !m._closing) n++;
+    const d = $("#drawer-overlay");
+    if (d && !d.dataset.closing) n++;
+    if ($("#report-screen.open")) n++;
+    const g = $("#install-guide");
+    if (g && !g.classList.contains("hidden")) n++;
+    return n;
+  },
+  depth() { return (currentTab !== "home" ? 1 : 0) + this.overlayCount(); },
+  hash() { return "#/" + currentTab; },
+  replace() { history.replaceState({ app: 1 }, "", this.hash()); this.lastHash = this.hash(); },
+  push() { history.pushState({ app: 1 }, "", this.hash()); this.lastHash = this.hash(); this.trap = true; },
+  sync() {
+    if (!/share=/.test(location.hash)) this.replace(); // 공유 해시는 Share.checkLink가 직접 지운다
+    if (this.inPop) return;
+    const d = this.depth();
+    if (d > 0 && !this.trap && !this.booting) this.push();
+    else if (d === 0 && this.trap) {
+      // 한 틱 미룸: closeModal(); openDetail() 같은 연쇄 호출이 함정을 그대로 쓰게
+      setTimeout(() => {
+        if (this.depth() === 0 && this.trap) { this.trap = false; this.silent = true; history.back(); }
+      }, 0);
+    }
+  },
+  /* 닫히는 중인 레이어는 건너뜀 (overlayCount와 같은 규칙) — 아니면 while(closeTop()) 이 애니메이션 동안 끝나지 않음 */
+  closeTop() {
+    if ($("#layer-overlay")) { closeLayer(); return true; }
+    const m = $("#modal-overlay");
+    if (m && !m._closing) {
+      if (m._sticky) return false;
+      (m._dismiss || closeModal)();
+      return true;
+    }
+    const d = $("#drawer-overlay");
+    if (d && !d.dataset.closing) { closeDrawer(); return true; }
+    const r = $("#report-screen.open");
+    if (r) { r.classList.remove("open"); this.sync(); return true; }
+    const g = $("#install-guide");
+    if (g && !g.classList.contains("hidden")) { hideInstallGuide(); return true; }
+    return false;
+  },
+  parse() {
+    const m = location.hash.match(/^#\/([a-z]+)(?:\/([a-z]+))?/);
+    if (!m || !this.ROUTES.includes(m[1])) return ["home", null];
+    return [m[1], m[2] || null];
+  },
+  openSub(route, sub) {
+    if (route === "expenses" && sub === "add" && S().onboarded) Expenses.openForm();
+  },
+  init() {
+    const [route, sub] = /share=/.test(location.hash) ? ["home", null] : this.parse();
+    this.booting = true;
+    switchTab(route);
+    this.booting = false;
+    this.openSub(route, sub);
+  },
+  onPop(e) {
+    if (!Store.state) return;
+    if (this.silent) {
+      this.silent = false;
+      if (!/share=/.test(location.hash)) this.replace();
+      return;
+    }
+    // 실행 중인 앱으로 들어온 외부 링크·바로가기 (popstate의 e.state가 null) — e.state를 보는 유일한 곳
+    if (e.state === null && location.hash !== this.lastHash) {
+      if (/share=/.test(location.hash)) return; // share.js의 hashchange가 가져옴
+      const [route, sub] = this.parse();
+      this.inPop = true;
+      while (this.closeTop());
+      switchTab(route);
+      this.openSub(route, sub);
+      this.inPop = false;
+      this.replace();
+      this.trap = this.depth() > 0; // 이 항목이 함정 역할
+      return;
+    }
+    this.trap = false;
+    this.inPop = true;
+    if (this.overlayCount() > 0) this.closeTop();
+    else if (currentTab !== "home") switchTab("home");
+    this.inPop = false;
+    if (this.depth() > 0) this.push();
+  }
+};
+window.addEventListener("popstate", (e) => Nav.onPop(e));
 
 /* ---------- header clock ---------- */
 let lastTickMin = "";
@@ -303,6 +417,7 @@ if (darkMQ) {
 
 /* ---------- drawer (side panel for tips/info) ---------- */
 function openDrawer(title, html) {
+  clearTimeout(closeDrawer._t); // 막 닫힌 드로어의 정리 타이머가 새 드로어를 지우지 않게
   let root = $("#drawer-root");
   if (!root) { root = document.createElement("div"); root.id = "drawer-root"; document.body.appendChild(root); }
   root.innerHTML = `<div class="drawer-overlay" id="drawer-overlay">
@@ -315,12 +430,15 @@ function openDrawer(title, html) {
   $("#drawer-overlay").addEventListener("click", (e) => { if (e.target.id === "drawer-overlay") closeDrawer(); });
   // 가이드 본문의 링크는 새 창으로 (앱(PWA) 화면을 벗어나지 않게)
   $$("#drawer-root .drawer-body a[href^='http']").forEach((a) => { a.target = "_blank"; a.rel = "noopener"; });
+  Nav.sync();
 }
 function closeDrawer() {
   const ov = $("#drawer-overlay");
-  if (!ov) return;
+  if (!ov || ov.dataset.closing) return;
+  ov.dataset.closing = "1";
   ov.classList.remove("open");
-  setTimeout(() => { const r = $("#drawer-root"); if (r) r.innerHTML = ""; }, 260);
+  closeDrawer._t = setTimeout(() => { const r = $("#drawer-root"); if (r) r.innerHTML = ""; }, 260);
+  Nav.sync();
 }
 
 /* ---------- sessions accessor ---------- */
@@ -464,7 +582,7 @@ async function doInstallPrompt() {
     const { outcome } = await deferredPrompt.userChoice;
     if (outcome === "accepted") {
       S().install_dismissed = true; Store.save();
-      $("#install-guide").classList.add("hidden");
+      hideInstallGuide();
       toast("설치가 시작됐어요 📲");
     }
   } catch (e) {}
@@ -502,14 +620,16 @@ function maybeShowInstallGuide(force) {
     <button class="btn block" id="install-ok">확인</button>
     <button class="btn ghost block" id="install-never">다시 보지 않기</button>
   </div>`;
-  $("#install-ok").onclick = () => el.classList.add("hidden");
-  $("#install-never").onclick = () => { S().install_dismissed = true; Store.save(); el.classList.add("hidden"); };
+  $("#install-ok").onclick = hideInstallGuide;
+  $("#install-never").onclick = () => { S().install_dismissed = true; Store.save(); hideInstallGuide(); };
   const inBtn = $("#install-now");
   if (inBtn) {
     if (deferredPrompt) inBtn.classList.remove("hidden");
     inBtn.onclick = doInstallPrompt;
   }
+  Nav.sync();
 }
+function hideInstallGuide() { $("#install-guide").classList.add("hidden"); Nav.sync(); }
 
 /* ---------- onboarding ---------- */
 function startOnboarding() {
@@ -602,13 +722,13 @@ Views.home = function () {
   if (!st.trip.hotel.name) tripTodos.push("호텔 미정");
   const unres = st.favorites.filter((id) => !(st.reservations[id] && st.reservations[id].status === "reserved"));
   const todos = [];
-  tripTodos.forEach((t) => todos.push({ text: t, tab: "prep" }));
+  tripTodos.forEach((t) => todos.push({ text: t, tab: "guide" }));
   if (unres.length) todos.push({ text: `예약 안 된 관심 세션 ${unres.length}개`, tab: "sessions" });
   const cl = Packing.list();
   const clDone = cl.filter((x) => x.done).length;
-  if (clDone < cl.length) todos.push({ text: `준비물 ${clDone}/${cl.length} 완료`, tab: "prep" });
+  if (clDone < cl.length) todos.push({ text: `준비물 ${clDone}/${cl.length} 완료`, tab: "guide" });
   const today = vegasDateStr();
-  if (today >= "2026-12-03" && today <= "2026-12-05") todos.push({ text: "✈️ 귀국 준비 확인 (체크아웃·공항·면세)", tab: "prep" });
+  if (today >= "2026-12-03" && today <= "2026-12-05") todos.push({ text: "✈️ 귀국 준비 확인 (체크아웃·공항·면세)", tab: "guide" });
 
   const pending = sessionsPending();
 
@@ -764,7 +884,7 @@ const DepartTasks = {
   toggle(id) {
     const done = S().depart_done || (S().depart_done = {});
     if (done[id]) delete done[id]; else done[id] = true;
-    Store.save(); Views.prep();
+    Store.save(); Views.guide();
   }
 };
 
@@ -797,7 +917,7 @@ const Packing = {  defaults() {
       if (!v) { toast("내용을 입력해 주세요"); return; }
       if (it) it.item = v;
       else list.push({ id: "pk" + Date.now().toString(36), item: v, done: false });
-      Store.save(); closeModal(); Views.prep(); toast("저장했어요");
+      Store.save(); closeModal(); Views.guide(); toast("저장했어요");
     };
     $("#ck-save").onclick = save;
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") save(); });
@@ -814,7 +934,7 @@ const Packing = {  defaults() {
       <button class="btn ghost block" id="ck-cancel">취소</button>`);
     $("#ck-del-yes").onclick = () => {
       S().checklist = list.filter((x) => x.id !== id);
-      Store.save(); closeModal(); Views.prep(); toast("삭제했어요");
+      Store.save(); closeModal(); Views.guide(); toast("삭제했어요");
     };
     $("#ck-cancel").onclick = closeModal;
   }
@@ -863,7 +983,11 @@ document.addEventListener("DOMContentLoaded", () => {
   tickClock();
   setInterval(tickClock, 10000);
   $$("#tabbar button").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
-  if (!S().onboarded) startOnboarding();
-  else { switchTab("home"); maybeShowInstallGuide(); }
-  Share.checkLink();
+  $("#hdr-settings").onclick = () => switchTab("settings");
+  Nav.init(); // 첫 화면은 주소(#/…)에 따라 — 부팅 중에는 뒤로가기 함정을 쌓지 않음
+  if (!S().onboarded) { startOnboarding(); Share.checkLink(); }
+  else {
+    Share.checkLink(); // 공유 해시를 먼저 소비 (설치 안내가 주소를 바꾸기 전에)
+    maybeShowInstallGuide();
+  }
 });
