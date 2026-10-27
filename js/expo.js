@@ -45,60 +45,49 @@ const Expo = {
     </div>`;
   },
 
-  open() {
-    const render = () => {
-      const list = this.list();
-      const done = this.visitedCount();
-      const pct = list.length ? Math.round((done / list.length) * 100) : 0;
-      return `
-        <div class="card" style="margin:0 0 10px;">
-          <div style="display:flex;justify-content:space-between;align-items:baseline;">
-            <b>🎪 스탬프 ${done}/${list.length}</b><span class="muted">${pct}%</span>
-          </div>
-          <div class="progress"><div style="width:${pct}%"></div></div>
-          <p class="muted" style="font-size:12px;margin:6px 0 0;">부스를 눌러 방문 스탬프를 찍으세요. 공식 부스 목록은 없어서 직접 추가하는 방식이에요.</p>
+  bodyHTML() {
+    const list = this.list();
+    const done = this.visitedCount();
+    const pct = list.length ? Math.round((done / list.length) * 100) : 0;
+    return `
+      <div class="card" style="margin:0 0 10px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+          <b>🎪 스탬프 ${done}/${list.length}</b><span class="muted">${pct}%</span>
         </div>
-        <div id="bx-list">${list.length ? list.map((b) => this.rowHTML(b)).join("") : `<p class="muted">아직 등록한 부스가 없어요. 아래에서 추가해 보세요.</p>`}</div>
-        <h3 class="sg-head">부스 추가</h3>
-        <label class="field" for="bx-name">부스 이름</label>
-        <input type="text" id="bx-name" maxlength="60" placeholder="예: Anthropic, Datadog">
-        <label class="field" for="bx-note">메모 (선택)</label>
-        <input type="text" id="bx-note" maxlength="80" placeholder="예: 굿즈 — 티셔츠, 담당자 명함 받기">
-        <button class="btn block" id="bx-add">추가하기</button>`;
-    };
-    openSheet({
-      title: "🎪 Expo 부스 스탬프 투어",
-      body: `<div id="bx-body">${render()}</div>`,
-      actions: `<button class="btn ghost block" id="bx-close">닫기</button>`
-    });
-    const refresh = () => { $("#bx-body").innerHTML = render(); bind(); };
-    const bind = () => {
-      $$("#bx-list [data-booth]").forEach((el) => {
-        el.onclick = (e) => {
-          if (e.target.dataset.boothDel) return;
-          this.toggle(el.dataset.booth);
-          refresh();
-          if (currentTab === "home" && Views.home) Views.home();
-        };
-      });
-      $$("#bx-list [data-booth-del]").forEach((el) => {
-        el.onclick = (e) => {
-          e.stopPropagation();
-          this.remove(el.dataset.boothDel);
-          refresh();
-          if (currentTab === "home" && Views.home) Views.home();
-        };
-      });
-      $("#bx-add").onclick = () => {
-        if (this.add($("#bx-name").value, $("#bx-note").value)) {
-          refresh();
-          if (currentTab === "home" && Views.home) Views.home();
-          toast("부스를 추가했어요 🎪");
-        }
+        <div class="progress"><div style="width:${pct}%"></div></div>
+        <p class="muted" style="font-size:12px;margin:6px 0 0;">부스를 눌러 방문 스탬프를 찍으세요. 공식 부스 목록은 없어서 직접 추가하는 방식이에요.</p>
+      </div>
+      <div id="bx-list">${list.length ? list.map((b) => this.rowHTML(b)).join("") : `<p class="muted">아직 등록한 부스가 없어요. 아래에서 추가해 보세요.</p>`}</div>
+      <h3 class="sg-head">부스 추가</h3>
+      <label class="field" for="bx-name">부스 이름</label>
+      <input type="text" id="bx-name" maxlength="60" placeholder="예: Anthropic, Datadog">
+      <label class="field" for="bx-note">메모 (선택)</label>
+      <input type="text" id="bx-note" maxlength="80" placeholder="예: 굿즈 — 티셔츠, 담당자 명함 받기">
+      <button class="btn block" id="bx-add">추가하기</button>`;
+  },
+  /* 노트 허브의 '부스 스탬프' 탭 이벤트 — refresh(): 탭 본문 다시 그리기 */
+  bind(root, refresh) {
+    const done = () => { refresh(); if (currentTab === "home" && Views.home) Views.home(); };
+    $$("#bx-list [data-booth]", root).forEach((el) => {
+      el.onclick = (e) => {
+        if (e.target.dataset.boothDel) return;
+        this.toggle(el.dataset.booth);
+        done();
       };
+    });
+    $$("#bx-list [data-booth-del]", root).forEach((el) => {
+      el.onclick = (e) => {
+        e.stopPropagation();
+        this.remove(el.dataset.boothDel);
+        done();
+      };
+    });
+    $("#bx-add", root).onclick = () => {
+      if (this.add($("#bx-name", root).value, $("#bx-note", root).value)) {
+        done();
+        toast("부스를 추가했어요 🎪");
+      }
     };
-    bind();
-    $("#bx-close").onclick = () => $("#modal-overlay")._dismiss();
   },
 
   /* 공식 운영 시간: event_info.expo의 요일별 값 "11/30 4:00 PM–7:00 PM (오픈)" */
@@ -129,6 +118,6 @@ const Expo = {
   },
   bindCard() {
     const b = $("#home-expo");
-    if (b) b.onclick = () => this.open();
+    if (b) b.onclick = () => Notes.open("expo");
   }
 };

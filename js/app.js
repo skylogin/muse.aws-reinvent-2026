@@ -808,7 +808,7 @@ Views.home = function () {
   Planner.bindUpcoming();
   Expo.bindCard();
   const hn = $("#home-news");
-  if (hn) hn.onclick = () => News.open();
+  if (hn) hn.onclick = () => Notes.open("news");
   $$("#view-home [data-news-q]").forEach((b) => b.onclick = () => News.show(b.dataset.newsQ));
   const rpf = $("#home-rec-profile");
   if (rpf) rpf.onclick = () => Settings.editProfile();

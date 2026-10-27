@@ -59,6 +59,7 @@ const ASSETS = [
   "./js/abstract-ko-chunk-09.js",
   "./js/app.js",
   "./js/sessions.js",
+  "./js/notes.js",
   "./js/planner.js",
   "./js/prep.js",
   "./js/expenses.js",
