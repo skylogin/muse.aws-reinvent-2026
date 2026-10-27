@@ -122,7 +122,6 @@ Views.expenses = function () {
       <div class="kv"><span>🏢 회사 합계</span><b>$${fmt(sc.usd)} · ₩${fmt(sc.krw)}</b></div>
       <div class="kv"><span>👤 개인 합계</span><b>$${fmt(sp.usd)} · ₩${fmt(sp.krw)}</b></div>
       <div class="row" style="margin-top:8px;">
-        <button class="btn accent" id="ex-add">+ 지출 추가</button>
         <button class="btn ghost" id="ex-export"${S().expenses.length ? "" : " disabled"}>📤 내보내기</button>
       </div>
     </div>
@@ -150,10 +149,12 @@ Views.expenses = function () {
         </div>
         ${e.receipt_img ? `<button class="rc-thumb" data-rcview="${esc(e.receipt_img)}" data-rctitle="${esc(e.desc || EXP_CATS[e.category] || "")}" aria-label="영수증 사진 보기"><img data-rcimg="${esc(e.receipt_img)}" alt=""></button>` : ""}
       </div>`).join("")
-      : `<div class="empty-state"><div class="big">🧾</div><p>${expFilter === "all" ? "기록된 지출이 없어요" : `${expFilter === "company" ? "회사" : "개인"} 지출이 없어요`}</p></div>`}`;
+      : `<div class="empty-state"><div class="big">🧾</div><p>${expFilter === "all" ? "기록된 지출이 없어요" : `${expFilter === "company" ? "회사" : "개인"} 지출이 없어요`}</p></div>`}
+    <button id="ex-fab" class="fab fab-text" aria-label="지출 추가">＋</button>`;
+  el.classList.add("has-fab");
 
   $$("#view-expenses [data-ef]").forEach((b) => b.onclick = () => { expFilter = b.dataset.ef; Views.expenses(); });
-  $("#ex-add").onclick = () => Expenses.openForm();
+  $("#ex-fab").onclick = () => Expenses.openForm();
   $("#ex-export").onclick = () => Expenses.openExport();
   $$("#view-expenses [data-exedit]").forEach((b) => b.onclick = () => Expenses.openForm(b.dataset.exedit));
   $$("#view-expenses [data-rcview]").forEach((b) => b.onclick = () => Receipts.view(b.dataset.rcview, b.dataset.rctitle));
@@ -189,7 +190,8 @@ Views.expenses = function () {
 };
 
 const Expenses = {
-  openForm(id) {
+  /* opts.photoFirst: 새 지출이면 시트를 연 즉시 카메라·사진 선택을 띄움 (같은 탭 동작 안에서 호출해야 함) */
+  openForm(id, opts) {
     const cur = id ? S().expenses.find((e) => e.id === id) : null;
     const today = vegasDateStr();
     const rate = S().fx_rate;
@@ -226,6 +228,7 @@ const Expenses = {
       <label class="check-item"><input type="checkbox" id="ex-receipt"${v.receipt ? " checked" : ""}><span>종이 영수증 보관함</span></label>`,
       actions: `<button class="btn ghost" id="ex-cancel">취소</button><button class="btn" id="ex-save">저장</button>`
     });
+    if (opts && opts.photoFirst && !cur) $("#ex-photo").click();
     let owner = v.owner;
     $$("#ex-owner .seg-btn").forEach((c) => c.onclick = () => {
       owner = c.dataset.v;
