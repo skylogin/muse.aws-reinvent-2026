@@ -30,9 +30,48 @@
   ],
   "lang": "ko",
   "name": "re:invent 2026",
-  "orientation": "portrait",
+  "orientation": "any",
   "scope": "./",
   "short_name": "re:invent 2026",
   "start_url": "./index.html",
-  "theme_color": "#0f1f3d"
+  "theme_color": "#0f1f3d",
+  "id": "./",
+  "shortcuts": [
+    {
+      "name": "오늘 일정",
+      "short_name": "일정",
+      "url": "./index.html#/planner",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "세션 검색",
+      "short_name": "세션",
+      "url": "./index.html#/sessions",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "지출 추가",
+      "short_name": "지출",
+      "url": "./index.html#/expenses/add",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
 }

@@ -149,7 +149,7 @@ body {
   word-break: keep-all; overflow-wrap: break-word; /* 한글은 어절 단위로 줄바꿈 */
 }
 body.modal-open #views { overflow: hidden; }
-#app { max-width: 520px; margin: 0 auto; height: 100vh; height: 100dvh; background: var(--bg);
+#app { max-width: var(--app-max, 520px); margin: 0 auto; height: 100vh; height: 100dvh; background: var(--bg);
   display: flex; flex-direction: column; }
 #views { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto;
   overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
@@ -366,7 +366,7 @@ body.modal-open #toast { bottom: auto; top: calc(12px + env(safe-area-inset-top)
 
 /* Filter FAB */
 .fab {
-  position: fixed; right: max(16px, calc(50vw - 260px + 16px)); bottom: calc(80px + env(safe-area-inset-bottom));
+  position: fixed; right: max(16px, calc((100vw - min(100vw, var(--app-max, 520px))) / 2 + 16px)); bottom: calc(80px + env(safe-area-inset-bottom));
   width: 56px; height: 56px; border-radius: 50%; border: 0;
   background: var(--accent); color: var(--accent-text);
   box-shadow: 0 4px 16px rgba(0,0,0,.25); cursor: pointer; z-index: 60;
@@ -740,3 +740,46 @@ table.plain th { color: var(--muted); font-weight: 600; font-size: 12px; }
 .chip { min-height: 36px; }
 .net-badge { display: inline-block; vertical-align: middle; font-size: 11px; font-weight: 700; padding: 2px 8px; margin-left: 6px;
   border-radius: 999px; background: var(--st-tight-bg); color: var(--st-tight); }
+
+/* ---------- responsive shell (화면 크기 단계: html[data-size] = compact | medium | expanded) ---------- */
+html { --app-max: 520px; }
+html[data-size="medium"], html[data-size="expanded"] { --app-max: 1200px; }
+/* 넓음(≥840px): 하단 탭 → 왼쪽 세로 메뉴(레일) */
+html[data-size="expanded"] { --rail-w: 88px; }
+html[data-size="expanded"] #app { display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr); grid-template-areas: "rail header" "rail views"; }
+html[data-size="expanded"] #app-header { grid-area: header; }
+html[data-size="expanded"] #views { grid-area: views; }
+html[data-size="expanded"] #tabbar { grid-area: rail; flex-direction: column; justify-content: flex-start; gap: 4px;
+  padding: calc(12px + env(safe-area-inset-top)) 0 env(safe-area-inset-bottom) env(safe-area-inset-left);
+  border-top: 0; border-right: 1px solid var(--line); }
+html[data-size="expanded"] #tabbar button { flex: 0 0 auto; min-height: 64px; }
+html[data-size="expanded"] #toast { bottom: calc(24px + env(safe-area-inset-bottom)); }
+html[data-size="expanded"] .fab { bottom: calc(24px + env(safe-area-inset-bottom)); }
+html[data-size="expanded"] .view.has-fab { padding-bottom: 36px; }
+/* 넓고 낮은 화면(iPhone Duo 펼침 등): 헤더를 한 줄로 */
+@media (min-width: 600px) and (max-height: 699px) {
+  #app-header { padding-top: calc(6px + env(safe-area-inset-top)); padding-bottom: 6px; }
+  .header-title { font-size: 15px; }
+  #clock-kst { display: none; }
+  .header-clock #clock-vegas { display: inline; }
+}
+/* 중간·넓음: 하단 시트 → 가운데 대화상자 */
+html:not([data-size="compact"]) .overlay { align-items: center; }
+html:not([data-size="compact"]) .sheet, html:not([data-size="compact"]) .sheet.bs {
+  max-width: 560px; border-radius: 20px; margin: 20px; max-height: min(86vh, 86dvh); }
+html:not([data-size="compact"]) .bs-grab { display: none; }
+/* 목록 + 상세 2분할 (세션·가이드에서 사용) */
+.split { display: grid; grid-template-columns: minmax(320px, 2fr) 3fr; gap: 0; height: 100%; }
+html[data-size="expanded"] .split { grid-template-columns: minmax(360px, 2fr) 3fr; }
+.split > .split-list, .split > .split-detail { overflow-y: auto; min-height: 0; padding: 14px; overscroll-behavior: contain; }
+.split > .split-detail { border-left: 1px solid var(--line); }
+.view.is-split { padding: 0; height: 100%; }
+.split-empty { color: var(--muted); text-align: center; margin-top: 30vh; }
+/* 접히는 선(힌지)이 있는 기기: 목록과 상세를 서로 다른 화면에 (지원 브라우저에서만) */
+@media (horizontal-viewport-segments: 2) {
+  #app { max-width: none; }
+  .split { grid-template-columns: calc(env(viewport-segment-width 0 0) - var(--rail-w, 0px))
+    calc(env(viewport-segment-left 1 0) - env(viewport-segment-right 0 0)) env(viewport-segment-width 1 0); }
+  .split > .split-detail { grid-column: 3; border-left: 0; }
+}

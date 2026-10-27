@@ -426,6 +426,21 @@ function paintNet() { const b = $("#net-badge"); if (b) b.classList.toggle("hidd
 window.addEventListener("offline", () => { paintNet(); toast("오프라인이에요 · 저장된 데이터로 계속 쓸 수 있어요"); });
 window.addEventListener("online", () => { paintNet(); toast("다시 연결됐어요"); if (currentTab === "home") Weather.refresh(); });
 
+/* ---------- 화면 크기 단계 (compact <600 · medium 600–839 · expanded ≥840) ----------
+   단계가 바뀌면(폴드 펼침·회전) 지금 화면을 다시 그린다. 열린 레이어는 닫지 않는다. */
+const Layout = {
+  mqM: window.matchMedia("(min-width: 600px)"),
+  mqE: window.matchMedia("(min-width: 840px)"),
+  size() { return this.mqE.matches ? "expanded" : this.mqM.matches ? "medium" : "compact"; },
+  wide() { return this.size() !== "compact"; },
+  apply() { document.documentElement.dataset.size = this.size(); },
+  onChange() { this.apply(); if (Store.state && Views[currentTab]) Views[currentTab](); }
+};
+[Layout.mqM, Layout.mqE].forEach((mq) => {
+  const fn = () => Layout.onChange();
+  if (mq.addEventListener) mq.addEventListener("change", fn); else if (mq.addListener) mq.addListener(fn);
+});
+
 /* ---------- drawer (side panel for tips/info) ---------- */
 function openDrawer(title, html) {
   clearTimeout(closeDrawer._t); // 막 닫힌 드로어의 정리 타이머가 새 드로어를 지우지 않게
@@ -991,6 +1006,7 @@ document.addEventListener("DOMContentLoaded", () => {
   Store.load();
   applyTheme();
   applyTextScale();
+  Layout.apply();
   paintNet();
   Notify.start();
   tickClock();
