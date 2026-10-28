@@ -221,5 +221,51 @@ const Sync = (() => {
     return out;
   }
 
-  return { LOCAL_KEYS, units, track, rebuild, synced, merge, replaceSynced, lost };
+  /* ---------- 파일·코드 형식 (스펙 7) ---------- */
+  const APP = "reinvent2026";
+  function envelope(o) {
+    return { app: APP, kind: "sync", v: 2, exported_at: o.exported_at, from: o.from || "", data: o.data, receipts: o.receipts || {} };
+  }
+  /* 파일·코드에서 읽은 객체 → { data, receipts, exported_at, from, legacy }. 앱 파일이 아니면 "not-app" */
+  function parse(obj) {
+    if (isObj(obj) && obj.app === APP && isObj(obj.data)) {
+      return { data: synced(obj.data), receipts: isObj(obj.receipts) ? obj.receipts : {},
+        exported_at: typeof obj.exported_at === "number" ? obj.exported_at : null, from: String(obj.from || ""), legacy: false };
+    }
+    if (isObj(obj) && isObj(obj.profile)) return { data: synced(obj), receipts: {}, exported_at: null, from: "", legacy: true }; // 예전 백업·코드
+    throw new Error("not-app");
+  }
+  const toB64url = (bytes) => {
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+    return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  };
+  const fromB64url = (s) => {
+    let b64 = s.replace(/-/g, "+").replace(/_/g, "/");
+    while (b64.length % 4) b64 += "=";
+    const bin = atob(b64), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  };
+  const pipe = async (bytes, stream) => new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer());
+  /* 텍스트 코드 (사진 제외): z1. = gzip, j1. = 압축 없음 */
+  async function encodeCode(env) {
+    const o = Object.assign({}, env);
+    delete o.receipts;
+    const bytes = new TextEncoder().encode(JSON.stringify(o));
+    if (typeof CompressionStream === "function") return "z1." + toB64url(await pipe(bytes, new CompressionStream("gzip")));
+    return "j1." + toB64url(bytes);
+  }
+  /* 코드 → 객체 (Sync.parse에 넘김). 메신저가 넣은 줄바꿈·공백은 무시. 접두사 없으면 예전 코드 */
+  async function decodeCode(text) {
+    const s = String(text || "").replace(/\s+/g, "");
+    let bytes;
+    if (s.startsWith("z1.")) {
+      if (typeof DecompressionStream !== "function") throw new Error("no-gzip");
+      bytes = await pipe(fromB64url(s.slice(3)), new DecompressionStream("gzip"));
+    } else bytes = fromB64url(s.startsWith("j1.") ? s.slice(3) : s);
+    return JSON.parse(new TextDecoder().decode(bytes));
+  }
+
+  return { LOCAL_KEYS, units, track, rebuild, synced, merge, replaceSynced, lost, envelope, parse, encodeCode, decodeCode };
 })();

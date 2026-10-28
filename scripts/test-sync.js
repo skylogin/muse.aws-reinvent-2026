@@ -186,6 +186,52 @@ test("lost: counts local-only units", () => {
   eq(Sync.lost(A.s, snap(B.s), CFG), { favorites: 1 }, "lost");
 });
 
+/* ---------- 파일·코드 형식 ---------- */
+const b64url = (s) => s.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const legacyCode = (state) => b64url(btoa(unescape(encodeURIComponent(JSON.stringify(state))))); // 예전 Transfer.encode
+const env1 = () => Sync.envelope({ data: snap(device().edit((s) => s.favorites.push("A"), 100).s), exported_at: 1761634200000, from: "iPhone · Safari" });
+const bigState = () => {
+  const s = base();
+  for (let i = 0; i < 40; i++) (s.daily_plan["2026-12-0" + (1 + (i % 4))] = s.daily_plan["2026-12-0" + (1 + (i % 4))] || []).push({ session_id: "AIM" + (100 + i) + "-S", note: "" });
+  for (let i = 0; i < 30; i++) s.expenses.push({ id: "ex17616" + i, date: "2026-12-01", owner: "company", category: "meal", desc: "점심 " + i, amount_usd: 12.5 + i, amount_krw: 18000 + i, receipt: false, receipt_img: "" });
+  return s;
+};
+test("code: z1 round trip", async () => {
+  const env = env1(), code = await Sync.encodeCode(env);
+  ok(code.startsWith("z1."), "z1 prefix: " + code.slice(0, 5));
+  const p = Sync.parse(await Sync.decodeCode(code));
+  eq([p.data, p.exported_at, p.from, p.legacy], [env.data, env.exported_at, env.from, false], "round trip");
+});
+test("code: z1 is shorter than legacy code", async () => {
+  const s = bigState(), z = await Sync.encodeCode(Sync.envelope({ data: Sync.synced(s), exported_at: 1, from: "" }));
+  const old = legacyCode(s);
+  ok(z.length < old.length * 0.6, `z1 ${z.length} vs legacy ${old.length}`);
+});
+test("code: j1 and legacy codes decode", async () => {
+  const env = env1();
+  const bytes = new TextEncoder().encode(JSON.stringify(env));
+  const j1 = "j1." + b64url(btoa(String.fromCharCode(...bytes)));
+  eq(Sync.parse(await Sync.decodeCode(j1)).data, env.data, "j1");
+  const old = Sync.parse(await Sync.decodeCode(legacyCode(Object.assign(base(), { favorites: ["X"], theme: "dark" }))));
+  eq([old.legacy, old.data.favorites, old.data.theme], [true, ["X"], undefined], "legacy code");
+});
+test("code: tolerates line breaks", async () => {
+  const code = await Sync.encodeCode(env1());
+  const broken = code.slice(0, 10) + "\n  " + code.slice(10, 30) + " \r\n" + code.slice(30);
+  eq(Sync.parse(await Sync.decodeCode(broken)).data, env1().data, "with breaks");
+});
+test("parse: legacy backup drops local keys", () => {
+  const p = Sync.parse({ profile: { nickname: "a", topics: [], services: [] }, favorites: ["A"], theme: "dark" });
+  eq([p.legacy, p.data.theme, p.data.favorites, p.exported_at, p.from], [true, undefined, ["A"], null, ""], "legacy backup");
+});
+test("parse rejects non-app input", () => {
+  [[], { a: 1 }, null, "text"].forEach((x) => {
+    let msg = "";
+    try { Sync.parse(x); } catch (e) { msg = e.message; }
+    eq(msg, "not-app", "reject " + J(x));
+  });
+});
+
 (async () => {
   let fails = 0;
   for (const [n, fn] of tests) {
