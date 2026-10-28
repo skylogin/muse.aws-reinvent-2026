@@ -833,7 +833,8 @@ html[data-size="expanded"] .split { grid-template-columns: minmax(360px, 2fr) 3f
 .pl-side { position: sticky; top: 0; }
 
 /* ---------- 넓은 화면: 홈 2열 · 가이드 본문 칸 · 정산 2열 ---------- */
-#view-home.home-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+/* .active까지 걸어야 함: #id 선택자가 .view { display: none }보다 강해서, 없으면 다른 탭에서도 홈이 남음 */
+#view-home.home-grid.active { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
 #view-home.home-grid > .card, #view-home.home-grid > .qa-row, #view-home.home-grid > .notice { margin: 0; }
 #view-home.home-grid > #home-upcoming > .card { margin: 0; }
 #view-home.home-grid > .span-2 { grid-column: 1 / -1; }
