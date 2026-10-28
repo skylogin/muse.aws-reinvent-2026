@@ -13,8 +13,10 @@ function todayClamped() {
 
 /* 공식 카탈로그 베뉴 표기 → event_info 베뉴명 매핑 (좌표 조회용) */
 const VENUE_ALIASES = { "Wynn/Encore": "Wynn", "Venetian": "The Venetian" };
-/* 행사 데이터(event_info.venues)에 없는 고정 일정 장소의 좌표 — re:Play 장소 (Wikipedia 좌표, 스트립 북쪽) */
-const EXTRA_VENUES = [{ name: "Las Vegas Festival Grounds", lat: 36.1425, lng: -115.1603 }];
+/* 행사 데이터(event_info.venues)에 없는 고정 일정 장소의 좌표 (Wikipedia 좌표)
+   re:Play: Allegiant Stadium (스트립 남쪽, I-15 건너편). Festival Grounds는 예전 장소 — 그때 고친 일정(fixed_edits)이 남아 있을 수 있어 둠
+   한 줄로 둘 것: scripts/check-data.js가 이 줄을 그대로 읽어 좌표를 점검함 */
+const EXTRA_VENUES = [{ name: "Allegiant Stadium", lat: 36.09056, lng: -115.18389 }, { name: "Las Vegas Festival Grounds", lat: 36.1425, lng: -115.1603 }];
 /* 좁은 자리에 쓰는 짧은 베뉴명 */
 const VENUE_SHORT = { "Caesars Forum": "Forum", "Caesars Palace": "Caesars", "MGM Grand": "MGM", "The Venetian": "Venetian", "Venetian": "Venetian", "Wynn/Encore": "Wynn", "Wynn": "Wynn", "Encore": "Encore" };
 const shortVenue = (v) => VENUE_SHORT[v] || v || "";
