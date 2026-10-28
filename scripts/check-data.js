@@ -76,7 +76,6 @@ venues.forEach((v) => {
   if (!ok) fail(`베뉴 좌표가 라스베가스 범위를 벗어나요: ${v.name} (${v.lat}, ${v.lng})`);
 });
 
-const ev = ei.event || {};
 const dateRe = /^\d{4}-\d{2}-\d{2}$/, timeRe = /^\d{2}:\d{2}$/;
 // 공식 카탈로그는 일정이 공개되기 전의 세션을 날짜·시간·베뉴 없이 올린다 (앱은 '일정 미정'으로 표시).
 // 이런 세션이 너무 많으면 수집이 깨진 것으로 본다.
@@ -89,7 +88,8 @@ S.forEach((s) => {
   if (!s.title) note("제목 없음", id);
   if (!s.date && !s.start_time && !s.end_time && !s.venue) { unscheduled++; return; } // 일정 미정: 네 값이 모두 비어야 함
   if (!dateRe.test(s.date || "")) note("날짜 형식(YYYY-MM-DD) 아님", id);
-  else if ((ev.start_date && s.date < ev.start_date) || (ev.end_date && s.date > ev.end_date)) note("행사 기간 밖 날짜", id);
+  // 행사 기간: 앱의 DAYS(11/29 배지 수령·킥오프일 ~ 12/5 귀국일)와 맞춤. event_info의 11/30~12/4는 본행사 기간이라 11/29 사전 활동이 걸림
+  else if (s.date < "2026-11-29" || s.date > "2026-12-05") note("행사 기간 밖 날짜", id);
   if (!timeRe.test(s.start_time || "") || !timeRe.test(s.end_time || "")) note("시간 형식(HH:MM) 아님", id);
   else if (s.end_time <= s.start_time) note("끝나는 시간이 시작보다 빠름", id);
   if (!s.venue) { if (s.room) roomOnly++; else note("베뉴·장소 없음", id); } // 여러 장소·베뉴 밖 장소는 room에만 있음
