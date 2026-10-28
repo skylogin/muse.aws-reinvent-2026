@@ -1,4 +1,4 @@
-/* 설정 탭: 프로필, 기기 이동·백업, 화면, 알림 */
+/* 설정 탭: 다른 기기와 이어하기·백업, 프로필, 화면, 알림 */
 "use strict";
 
 Views.settings = function () {
@@ -6,27 +6,26 @@ Views.settings = function () {
   const topics = st.profile.topics;
   $("#view-settings").innerHTML = `
     <div class="view-back"><button class="btn ghost small" id="set-back" type="button" aria-label="홈으로">◀ 홈</button><h2>설정</h2></div>
-    <div class="card"><h3>👤 프로필</h3>
-      <div class="kv"><span>닉네임</span><b>${esc(st.profile.nickname) || "게스트"}</b></div>
-      <div class="kv"><span>관심 서비스</span><b>${(st.profile.services || []).length ? esc((st.profile.services || []).map(shortService).join(", ")) : "미설정"}</b></div>
-      <div class="kv"><span>관심 토픽</span><b>${topics.length ? esc(topics.slice(0, 3).join(", ")) + (topics.length > 3 ? ` 외 ${topics.length - 3}개` : "") : "미설정"}</b></div>
-      <button class="btn ghost block" id="set-profile">프로필 수정</button>
-    </div>
-    <div class="card"><h3>📲 기기·백업</h3>
-      <p class="muted" style="font-size:13px;">이 앱은 서버 없이 이 기기에만 저장됩니다.</p>
+    <div class="card"><h3>🔄 다른 기기와 이어하기</h3>
+      <p class="muted" style="font-size:13px;margin-top:0;">폰과 PC에서 번갈아 써도, 받을 때 두 기기 내용이 합쳐져요. 서버 없이 파일로 주고받아요.</p>
+      <div class="row sync-btns">
+        <button class="btn" id="set-send">📤 보내기</button>
+        <button class="btn" id="set-recv">📥 받기</button>
+      </div>
+      <p class="muted" id="set-sync-status" style="font-size:12px;margin:8px 0 0;">${esc(TransferUI.syncStatus(st))}</p>
+      ${(() => { const u = Transfer.undoInfo(); return u ? `<button class="link-btn" id="set-undo">↩️ 마지막 가져오기 되돌리기 (${Transfer.when(u.at)})</button>` : ""; })()}
       ${(() => {
         const at = st.last_backup_at, days = at ? Math.floor((Date.now() - at) / 86400000) : null;
         const label = at == null ? "아직 백업하지 않았어요" : days === 0 ? "오늘" : `${days}일 전`;
         return `<div class="kv"><span>마지막 백업</span><b class="${at == null || days >= 3 ? "st-text st-tight" : ""}">${label}</b></div>`;
       })()}
-      <div class="row">
-        <button class="btn ghost small" id="set-transfer">📤 다른 기기로 옮기기</button>
-        <button class="btn ghost small" id="set-import">📥 가져오기</button>
-      </div>
-      <div class="row" style="margin-top:8px;">
-        <button class="btn ghost small" id="set-backup">💾 백업 파일 저장</button>
-        <button class="btn ghost small" id="set-install">📲 설치 안내</button>
-      </div>
+      <button class="btn ghost small" id="set-backup">💾 백업 파일 저장</button>
+    </div>
+    <div class="card"><h3>👤 프로필</h3>
+      <div class="kv"><span>닉네임</span><b>${esc(st.profile.nickname) || "게스트"}</b></div>
+      <div class="kv"><span>관심 서비스</span><b>${(st.profile.services || []).length ? esc((st.profile.services || []).map(shortService).join(", ")) : "미설정"}</b></div>
+      <div class="kv"><span>관심 토픽</span><b>${topics.length ? esc(topics.slice(0, 3).join(", ")) + (topics.length > 3 ? ` 외 ${topics.length - 3}개` : "") : "미설정"}</b></div>
+      <button class="btn ghost block" id="set-profile">프로필 수정</button>
     </div>
     <div class="card"><h3>🎨 화면 테마</h3>
       <div class="chip-row" id="set-theme">
@@ -51,13 +50,16 @@ Views.settings = function () {
       <div class="kv"><span>버전</span><b>v1</b></div>
       <div class="kv"><span>세션 데이터</span><b>${esc(dataAsOf())} · ${allSessions().length.toLocaleString("ko-KR")}개</b></div>
       <div class="kv"><span>데이터 보관</span><b>이 기기(localStorage)</b></div>
+      <button class="btn ghost small" id="set-install" style="margin-top:8px;">📲 설치 안내</button>
     </div>`;
 
   $("#set-back").onclick = () => switchTab("home");
   $("#set-profile").onclick = Settings.editProfile;
-  $("#set-transfer").onclick = () => TransferUI.showExport();
+  $("#set-send").onclick = () => TransferUI.showSend();
+  $("#set-recv").onclick = () => TransferUI.showImport();
   $("#set-backup").onclick = () => TransferUI.exportFile();
-  $("#set-import").onclick = () => TransferUI.showImport();
+  const undo = $("#set-undo");
+  if (undo) undo.onclick = () => Transfer.undo();
   $("#set-install").onclick = () => maybeShowInstallGuide(true);
   $$("#set-theme [data-theme-v]").forEach((b) => b.onclick = () => {
     S().theme = b.dataset.themeV;

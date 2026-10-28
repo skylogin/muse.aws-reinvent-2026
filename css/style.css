@@ -843,3 +843,7 @@ html[data-size="expanded"] .split { grid-template-columns: minmax(360px, 2fr) 3f
 .guide-item.on { box-shadow: 0 0 0 2px var(--select-border); }
 .ex-cols { display: grid; grid-template-columns: minmax(300px, 2fr) minmax(0, 3fr); gap: 12px; align-items: start; }
 .ex-side { position: sticky; top: 0; }
+
+/* ---------- 다른 기기와 이어하기 ---------- */
+.sync-btns .btn { margin: 0; font-size: 15px; padding: 14px 12px; }
+.sd-hint { font-size: 12px; margin: 4px 0 0; text-align: center; }
