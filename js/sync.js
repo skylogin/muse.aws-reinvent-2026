@@ -178,6 +178,8 @@ const Sync = (() => {
     const keys = new Set([...Object.keys(lu), ...Object.keys(ru), ...Object.keys(lm.tombs || {}), ...Object.keys(rm.tombs || {})]);
     const chosen = {}, stamps = {}, tombs = {}, rows = {};
     let total = 0, overwritten = 0, unrecorded = false;
+    // 마지막으로 주고받은 때 (보냄·받음 중 늦은 쪽). 그 뒤의 수정만 '덮어써지는 수정'으로 셈
+    const since = (opts.lastSyncAt != null ? opts.lastSyncAt : opts.lastReceivedAt) || 0;
     const count = (k, f) => { const c = splitKey(k)[0]; (rows[c] = rows[c] || { add: 0, change: 0, del: 0 })[f]++; total++; };
     keys.forEach((k) => {
       const l = side(lu, lm, k), r = side(ru, rm, k);
@@ -191,7 +193,7 @@ const Sync = (() => {
       else if (had && !has) count(k, "del");
       else if (had && has && l.v !== p.v) count(k, "change");
       // 지난번에 받은 뒤 이 기기에서 고친(지운) 것이 다른 기기의 더 나중 수정에 덮이는 경우
-      if (p === r && l && (l.del !== r.del || l.v !== r.v) && l.t > (opts.lastReceivedAt || 0)) overwritten++;
+      if (p === r && l && (l.del !== r.del || l.v !== r.v) && l.t > since) overwritten++;
     });
     const state = {};
     LOCAL_KEYS.forEach((k) => { if (k in local) state[k] = local[k]; });

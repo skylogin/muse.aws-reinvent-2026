@@ -776,7 +776,7 @@ function stepBranch() {
     <button class="btn ghost block" id="ob-import">다른 기기에서 가져오기</button>`);
   $("#ob-new").onclick = stepProfile;
   $("#ob-import").onclick = () => {
-    TransferUI.showImport(() => { S().onboarded = true; Store.save(); finishOnboarding(); }, () => {});
+    TransferUI.showReceive(() => { S().onboarded = true; Store.save(); finishOnboarding(); });
   };
 }
 function stepProfile() {

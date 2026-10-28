@@ -56,7 +56,7 @@ Views.settings = function () {
   $("#set-back").onclick = () => switchTab("home");
   $("#set-profile").onclick = Settings.editProfile;
   $("#set-send").onclick = () => TransferUI.showSend();
-  $("#set-recv").onclick = () => TransferUI.showImport();
+  $("#set-recv").onclick = () => TransferUI.showReceive();
   $("#set-backup").onclick = () => TransferUI.exportFile();
   const undo = $("#set-undo");
   if (undo) undo.onclick = () => Transfer.undo();

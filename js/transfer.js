@@ -1,4 +1,5 @@
-/* 다른 기기와 이어하기: 보내기(공유 창·파일·텍스트 코드) + 받기 (서버 없음). 합치는 규칙은 js/sync.js */
+/* 다른 기기와 이어하기: 보내기(공유 창·파일·텍스트 코드) + 받기(끌어다 놓기·파일·코드) → 미리보기 → 합치기·덮어쓰기 → 되돌리기
+   서버 없음. 합치는 규칙은 js/sync.js */
 "use strict";
 
 /* 보낸 기기 이름: "iPhone · Safari", "Galaxy · 삼성 인터넷", "Mac · Chrome", 홈 화면 앱이면 "iPhone · 앱" */
@@ -17,6 +18,13 @@ const blobToDataURL = (blob) => new Promise((res, rej) => {
   r.onerror = () => rej(r.error);
   r.readAsDataURL(blob);
 });
+
+/* 미리보기에 쓰는 컬렉션 이름 (없으면 키 이름 그대로) */
+const SYNC_LABELS = {
+  favorites: "관심 세션", daily_plan: "내 일정", reservations: "예약 상태", backups: "대체 세션", session_notes: "세션 메모",
+  expenses: "지출", checklist: "준비물", depart_done: "출발 전 할 일", fixed_off: "고정 일정", fixed_edits: "고정 일정",
+  peers: "동료 일정", news: "발표 메모", expo_booths: "Expo 부스", trip: "출장 정보", profile: "프로필", fx_rate: "환율", budget_usd: "예산"
+};
 
 const Transfer = {
   UNDO_KEY: "reinvent2026.undo",
@@ -60,14 +68,52 @@ const Transfer = {
   undoInfo() {
     try { const u = JSON.parse(localStorage.getItem(this.UNDO_KEY) || "null"); return u && u.at ? { at: u.at } : null; } catch (e) { return null; }
   },
-  /* 예전 코드 읽기 — 받기 화면을 바꾸면서 Sync.decodeCode로 대체 */
-  decode(code) {
-    let b64 = code.trim().replace(/-/g, "+").replace(/_/g, "/");
-    while (b64.length % 4) b64 += "=";
-    const json = decodeURIComponent(escape(atob(b64)));
-    const obj = JSON.parse(json);
-    if (!obj || typeof obj !== "object" || !obj.profile) throw new Error("invalid");
-    return obj;
+  /* 받은 파일(File) 또는 텍스트 코드 → Sync.parse 결과 */
+  async read(src) {
+    const obj = typeof src === "string" ? await Sync.decodeCode(src) : JSON.parse(await src.text());
+    return Sync.parse(obj);
+  },
+  /* 합친 결과를 미리 계산 (반영 전 미리보기용) */
+  plan(parsed) {
+    const sl = S().sync_local || {};
+    const sentOrGot = Math.max(sl.last_received_at || 0, sl.last_sent_at || 0);
+    return Sync.merge(S(), parsed.data, { cfg: SYNC_CFG, lastReceivedAt: sl.last_received_at, lastSyncAt: sentOrGot || null,
+      lastReceivedExportedAt: sl.last_received_exported_at, remoteExportedAt: parsed.exported_at });
+  },
+  /* 이 기기에 없고 합친 결과가 가리키는 사진 중 파일에 들어 있는 것 */
+  async newPhotos(parsed, next) {
+    const have = new Set(await Receipts.keys().catch(() => []));
+    return this.photoIds(next).filter((id) => !have.has(id) && parsed.receipts[id]);
+  },
+  /* 반영 (스펙 6.2): 되돌리기 사본 → 안 쓰는 사진 정리 → 상태 교체 → 사진 저장 → 받음 기록 */
+  async apply(parsed, mode) {
+    const cur = S();
+    const next = mode === "replace" ? Sync.replaceSynced(cur, parsed.data) : this.plan(parsed).state;
+    try { localStorage.setItem(this.UNDO_KEY, JSON.stringify({ at: Date.now(), data: Sync.synced(cur) })); }
+    catch (e) { toast("저장 공간이 부족해 되돌리기 사본을 만들지 못했어요"); }
+    const keep = new Set(this.photoIds(cur).concat(this.photoIds(next)));
+    for (const id of await Receipts.keys().catch(() => [])) if (!keep.has(id)) await Receipts.del(id);
+    const add = await this.newPhotos(parsed, next);
+    Store.replace(next);
+    for (const id of add) {
+      try { await Receipts.put(id, await (await fetch(parsed.receipts[id])).blob()); } catch (e) { /* 사진 하나 실패해도 나머지는 계속 */ }
+    }
+    const sl = S().sync_local;
+    sl.last_received_at = Date.now();
+    sl.last_received_exported_at = parsed.exported_at;
+    sl.last_from = parsed.from;
+    Store.save();
+  },
+  undo() {
+    let u = null;
+    try { u = JSON.parse(localStorage.getItem(this.UNDO_KEY) || "null"); } catch (e) { /* 무시 */ }
+    if (!u || !u.data) { toast("되돌릴 가져오기가 없어요"); return; }
+    Store.replace(Sync.replaceSynced(S(), u.data));
+    try { localStorage.removeItem(this.UNDO_KEY); } catch (e) { /* 무시 */ }
+    const bar = $("#undo-bar");
+    if (bar) bar.remove();
+    if (Views[currentTab]) Views[currentTab]();
+    toast("가져오기 전으로 되돌렸어요");
   }
 };
 
@@ -158,39 +204,102 @@ const TransferUI = {
     this.markBackup();
   },
 
-  showImport(onDone, onCancel) {
-    openModal(`
-      <h2>📥 다른 기기에서 가져오기</h2>
-      <p class="muted" style="font-size:13px;">이전 기기에서 복사한 코드를 붙여넣거나, 백업 파일을 선택하세요.</p>
-      <textarea id="tf-in" rows="5" placeholder="여기에 코드를 붙여넣으세요"></textarea>
-      <button class="btn block" id="tf-do">가져오기</button>
-      <div class="row" style="margin-top:8px;">
-        <label class="btn ghost" style="cursor:pointer;">백업 파일 선택<input type="file" id="tf-filein" accept=".json,application/json" style="display:none;"></label>
-        <button class="btn ghost" id="tf-cancel">취소</button>
-      </div>`, { sticky: true });
-    const apply = (obj) => {
-      if (!obj || typeof obj !== "object" || !obj.profile) { toast("앱 백업 데이터가 아니에요."); return; }
-      if (!confirm("현재 기기의 데이터가 가져온 데이터로 교체됩니다. 계속할까요?")) return;
-      Store.state = Object.assign(defaultState(), obj, { onboarded: true });
-      Store.save();
-      closeModal();
-      applyTheme();
-      Notify.start();
-      toast("가져오기를 완료했어요 🎉");
-      if (onDone) onDone(); else switchTab("home");
-    };
-    $("#tf-do").onclick = () => {
-      try { apply(Transfer.decode($("#tf-in").value)); }
-      catch (e) { toast("코드를 읽을 수 없어요. 다시 확인해 주세요."); }
-    };
-    $("#tf-filein").addEventListener("change", (e) => {
-      const f = e.target.files[0];
-      if (!f) return;
-      const r = new FileReader();
-      r.onload = () => { try { apply(JSON.parse(r.result)); } catch (err) { toast("파일을 읽을 수 없어요."); } };
-      r.readAsText(f);
+  showReceive(onDone) {
+    this._onDone = onDone || null;
+    const desktop = browserEnv().os === "desktop";
+    openSheet({
+      title: "📥 다른 기기에서 받기",
+      body: `
+        <div class="rv-drop" id="rv-drop">
+          <div class="rv-ico" aria-hidden="true">📂</div>
+          <b>${desktop ? "여기에 파일을 끌어다 놓으세요" : "받은 파일을 골라 주세요"}</b>
+          <label class="btn" style="cursor:pointer;">파일 선택<input type="file" id="rv-file" accept=".json,application/json" style="display:none;"></label>
+        </div>
+        <p class="muted" style="font-size:12px;margin:6px 0 0;">AirDrop·카톡으로 받은 파일은 ${desktop ? "다운로드 폴더" : "파일 앱 → 다운로드"}에 있어요. 바로 합치지 않고 무엇이 바뀌는지 먼저 보여드려요.</p>
+        <label class="field" style="display:block;margin-top:14px;">또는 텍스트 코드 붙여넣기</label>
+        <textarea id="rv-code" rows="3" placeholder="z1.으로 시작하는 코드"></textarea>
+        <button class="btn ghost block" id="rv-code-go">코드로 가져오기</button>`
     });
-    $("#tf-cancel").onclick = () => { closeModal(); if (onCancel) onCancel(); };
+    $("#rv-file").addEventListener("change", (e) => { const f = e.target.files[0]; if (f) this.receiveFrom(f); });
+    $("#rv-code-go").onclick = () => {
+      const t = $("#rv-code").value.trim();
+      if (!t) { toast("코드를 붙여넣어 주세요"); return; }
+      this.receiveFrom(t);
+    };
+  },
+  async receiveFrom(src) {
+    let parsed;
+    try { parsed = await Transfer.read(src); }
+    catch (e) {
+      toast(e && e.message === "no-gzip" ? "이 브라우저에서는 이 코드를 풀 수 없어요. 파일로 보내 주세요"
+        : typeof src === "string" ? "코드를 읽을 수 없어요. 다시 확인해 주세요." : "re:Invent 앱 파일이 아니에요");
+      return;
+    }
+    this.showPreview(parsed);
+  },
+  /* 컬렉션별 "내 일정 +2", "지출 +1 · 변경 1" (같은 이름은 합침) */
+  rowsText(rows) {
+    const byLabel = new Map();
+    Object.keys(rows).forEach((col) => {
+      const label = SYNC_LABELS[col] || col, r = rows[col], t = byLabel.get(label) || { add: 0, change: 0, del: 0 };
+      t.add += r.add; t.change += r.change; t.del += r.del;
+      byLabel.set(label, t);
+    });
+    return Array.from(byLabel).map(([label, r]) =>
+      [label, [r.add ? `+${r.add}` : "", r.change ? `변경 ${r.change}` : "", r.del ? `삭제 ${r.del}` : ""].filter(Boolean).join(" · ")])
+      .filter(([, t]) => t);
+  },
+  async showPreview(parsed) {
+    const { state, summary } = Transfer.plan(parsed);
+    const photos = (await Transfer.newPhotos(parsed, state)).length;
+    const lines = this.rowsText(summary.rows);
+    if (photos) lines.push(["영수증 사진", `+${photos}`]);
+    const notes = [];
+    if (summary.overwritten) notes.push(`<div class="warn-box">⚠️ 이 기기에서 고친 것 중 ${summary.overwritten}건은 다른 기기에서 나중에 고쳐서 그쪽으로 바뀌어요.</div>`);
+    if (summary.stale) notes.push(`<div class="notice">이전에 보낸 파일이에요. 합쳐도 최신 내용은 그대로 남아요.</div>`);
+    if (summary.legacy) notes.push(`<div class="notice">처음 합칠 때는 예전에 지운 항목이 다시 생길 수 있어요.</div>`);
+    const title = parsed.from && parsed.exported_at ? `📥 ${parsed.from}에서 ${Transfer.when(parsed.exported_at)}에 보낸 데이터` : "📥 가져온 데이터";
+    openSheet({
+      title,
+      body: `
+        <ul class="mg-rows" id="mg-rows">${lines.length ? lines.map(([l, t]) => `<li>${esc(l)} <b>${esc(t)}</b></li>`).join("")
+          : `<li class="muted">이미 같은 상태예요</li>`}</ul>
+        ${notes.join("")}
+        <p class="muted" style="font-size:12px;margin:8px 0 0;">합치기: 두 기기 내용을 모두 남기고, 같은 항목은 나중에 고친 쪽으로 맞춰요. 테마·글자 크기 같은 이 기기 설정은 그대로예요.</p>`,
+      actions: `<button class="btn ghost" id="mg-cancel">취소</button><button class="btn ghost" id="mg-over">덮어쓰기</button><button class="btn" id="mg-merge">합치기</button>`,
+      sticky: true
+    });
+    $("#mg-cancel").onclick = () => $("#modal-overlay")._dismiss();
+    $("#mg-merge").onclick = () => this.commit(parsed, "merge");
+    $("#mg-over").onclick = () => {
+      const lost = Sync.lost(S(), parsed.data, SYNC_CFG), byLabel = new Map();
+      Object.keys(lost).forEach((c) => { const l = SYNC_LABELS[c] || c; byLabel.set(l, (byLabel.get(l) || 0) + lost[c]); });
+      const words = Array.from(byLabel).map(([l, n]) => `${l} ${n}${l === "지출" ? "건" : "개"}`).join(", ");
+      if (!confirm(words ? `이 기기에만 있는 항목이 사라져요: ${words}. 덮어쓸까요?` : "이 기기의 데이터를 가져온 데이터로 바꿀까요?")) return;
+      this.commit(parsed, "replace");
+    };
+  },
+  async commit(parsed, mode) {
+    $$("#modal-overlay .bs-actions .btn").forEach((b) => { b.disabled = true; });
+    try { await Transfer.apply(parsed, mode); }
+    catch (e) { toast("가져오지 못했어요"); $$("#modal-overlay .bs-actions .btn").forEach((b) => { b.disabled = false; }); return; }
+    closeModal();
+    const done = this._onDone;
+    this._onDone = null;
+    if (done) done(); else if (Views[currentTab]) Views[currentTab]();
+    this.showUndoBar(mode === "replace" ? "덮어썼어요" : "합쳤어요");
+  },
+  showUndoBar(msg) {
+    const old = $("#undo-bar");
+    if (old) old.remove();
+    const bar = document.createElement("div");
+    bar.id = "undo-bar";
+    bar.setAttribute("role", "status");
+    bar.innerHTML = `<span>${esc(msg)}</span><button class="btn small" id="undo-go">되돌리기</button>`;
+    document.body.appendChild(bar);
+    $("#undo-go").onclick = () => Transfer.undo();
+    clearTimeout(this._undoT);
+    this._undoT = setTimeout(() => bar.remove(), 12000);
   },
 
   /* 백업 파일 저장: 보내기와 같은 파일(사진 포함)을 이 기기에 다운로드 */
@@ -211,3 +320,20 @@ const TransferUI = {
     else if (currentTab === "home" && !$("#modal-overlay")) Views.home();
   }
 };
+
+/* 받기 화면이 열려 있는 동안 창 아무 데나 파일을 놓아도 받음 */
+document.addEventListener("dragover", (e) => {
+  const z = $("#rv-drop");
+  if (!z) return;
+  e.preventDefault();
+  z.classList.add("over");
+});
+document.addEventListener("dragleave", (e) => { const z = $("#rv-drop"); if (z && !e.relatedTarget) z.classList.remove("over"); });
+document.addEventListener("drop", (e) => {
+  const z = $("#rv-drop");
+  if (!z) return;
+  e.preventDefault();
+  z.classList.remove("over");
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) TransferUI.receiveFrom(f);
+});

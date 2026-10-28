@@ -310,6 +310,12 @@ label.field { font-size: 13px; font-weight: 600; color: var(--muted); }
   background: var(--navy); color: #fff; font-size: 14px; box-shadow: 0 4px 14px rgba(0,0,0,.25);
   max-width: calc(100% - 32px); width: max-content; }
 #update-bar .btn { margin: 0; border-radius: 999px; }
+/* 가져오기 직후 '되돌리기' (새 버전 알림과 같은 모양) */
+#undo-bar { position: fixed; left: 50%; top: calc(64px + env(safe-area-inset-top)); transform: translateX(-50%);
+  z-index: 350; display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 16px; border-radius: 999px;
+  background: var(--navy); color: #fff; font-size: 14px; box-shadow: 0 4px 14px rgba(0,0,0,.25);
+  max-width: calc(100% - 32px); width: max-content; }
+#undo-bar .btn { margin: 0; border-radius: 999px; }
 #toast { position: fixed; left: 50%; bottom: calc(78px + env(safe-area-inset-bottom)); transform: translateX(-50%);
   background: var(--navy); color: #fff; padding: 10px 18px; border-radius: 999px;
   font-size: 14px; z-index: 400; box-shadow: 0 4px 14px rgba(0,0,0,.25);
@@ -847,3 +853,11 @@ html[data-size="expanded"] .split { grid-template-columns: minmax(360px, 2fr) 3f
 /* ---------- 다른 기기와 이어하기 ---------- */
 .sync-btns .btn { margin: 0; font-size: 15px; padding: 14px 12px; }
 .sd-hint { font-size: 12px; margin: 4px 0 0; text-align: center; }
+.rv-drop { border: 2px dashed var(--line); border-radius: 14px; padding: 18px 12px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.rv-drop.over { border-color: var(--accent); background: var(--select-bg); }
+.rv-drop .rv-ico { font-size: 28px; }
+.rv-drop .btn { margin: 0; }
+.mg-rows { list-style: none; margin: 0 0 8px; padding: 0; }
+.mg-rows li { padding: 8px 2px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.mg-rows li:last-child { border-bottom: 0; }

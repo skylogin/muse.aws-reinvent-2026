@@ -106,6 +106,14 @@ test("merge: later edit wins and counts overwritten", () => {
   r = Sync.merge(A.s, snap(B.s), { cfg: CFG, lastReceivedAt: 350 });
   eq(r.summary.overwritten, 0, "local edit was before last receive");
 });
+test("merge: overwritten uses last sync (sent or received) when given", () => {
+  // 폰이 t=100에 만들고 t=150에 보냄 → PC가 받아서 t=300에 고침 → 폰이 받음: 폰의 수정은 PC가 이미 본 것이라 경고 없음
+  const P = device().edit((s) => s.expenses.push(ex("ex1", 10)), 100);
+  const C = device().edit((s) => s.expenses.push(ex("ex1", 10)), 100).edit((s) => { s.expenses[0].amount_usd = 30; }, 300);
+  eq(Sync.merge(P.s, snap(C.s), { cfg: CFG, lastReceivedAt: null, lastSyncAt: 150 }).summary.overwritten, 0, "edit before last send");
+  P.edit((s) => { s.expenses[0].amount_usd = 20; }, 200); // 보낸 뒤 폰에서 또 고침 → 덮이면 경고
+  eq(Sync.merge(P.s, snap(C.s), { cfg: CFG, lastReceivedAt: null, lastSyncAt: 150 }).summary.overwritten, 1, "edit after last send");
+});
 test("merge: delete after edit deletes, edit after delete keeps", () => {
   const A = device().edit((s) => s.expenses.push(ex("ex1", 10)), 100).edit((s) => { s.expenses = []; }, 500);
   let B = device().edit((s) => s.expenses.push(ex("ex1", 10)), 100).edit((s) => { s.expenses[0].amount_usd = 20; }, 400);
