@@ -13,8 +13,10 @@ function todayClamped() {
 
 /* 공식 카탈로그 베뉴 표기 → event_info 베뉴명 매핑 (좌표 조회용) */
 const VENUE_ALIASES = { "Wynn/Encore": "Wynn", "Venetian": "The Venetian" };
-/* 행사 데이터(event_info.venues)에 없는 고정 일정 장소의 좌표 — re:Play 장소 (Wikipedia 좌표, 스트립 북쪽) */
-const EXTRA_VENUES = [{ name: "Las Vegas Festival Grounds", lat: 36.1425, lng: -115.1603 }];
+/* 행사 데이터(event_info.venues)에 없는 고정 일정 장소의 좌표 (Wikipedia 좌표)
+   re:Play: Allegiant Stadium (스트립 남쪽, I-15 건너편). Festival Grounds는 예전 장소 — 그때 고친 일정(fixed_edits)이 남아 있을 수 있어 둠
+   한 줄로 둘 것: scripts/check-data.js가 이 줄을 그대로 읽어 좌표를 점검함 */
+const EXTRA_VENUES = [{ name: "Allegiant Stadium", lat: 36.09056, lng: -115.18389 }, { name: "Las Vegas Festival Grounds", lat: 36.1425, lng: -115.1603 }];
 /* 좁은 자리에 쓰는 짧은 베뉴명 */
 const VENUE_SHORT = { "Caesars Forum": "Forum", "Caesars Palace": "Caesars", "MGM Grand": "MGM", "The Venetian": "Venetian", "Venetian": "Venetian", "Wynn/Encore": "Wynn", "Wynn": "Wynn", "Encore": "Encore" };
 const shortVenue = (v) => VENUE_SHORT[v] || v || "";
@@ -103,8 +105,11 @@ const Planner = {
     const v = (window.APP_DATA.event_info.venues || []).concat(EXTRA_VENUES).find((x) => x.name === key);
     return v ? { lat: v.lat, lng: v.lng } : null;
   },
-  /* 도보 시간: 직선거리 기준 시속 3.5km(카지노 우회·인파 감안) + 건물 출입 10분 */
-  walkMinutes(km) { return Math.round(km / 3.5 * 60) + 10; },
+  /* 이동 시간은 늦지 않게 넉넉히 잡음 (구글 지도의 건물 앞→건물 앞 시간보다 김). 화면에 '이동 + 여유'로 나눠 보여줌
+     도보: 직선거리 기준 시속 3.5km(카지노 우회·인파 감안) + 건물 출입 10분 · 차량·셔틀: + 승차장까지 걷기·대기 15분 */
+  WALK_BUFFER: 10,
+  RIDE_BUFFER: 15,
+  walkMinutes(km) { return Math.round(km / 3.5 * 60) + this.WALK_BUFFER; },
   havKm(a, b) {
     const R = 6371, r = (d) => d * Math.PI / 180;
     const dLa = r(b.lat - a.lat), dLo = r(b.lng - a.lng);
@@ -119,15 +124,19 @@ const Planner = {
     if (!a || !b) return { minutes: 30, mode: "셔틀/택시", icon: "🚌", label: "베뉴 간 이동 — 여유 30분", maps: null };
     const km = this.havKm(a, b);
     const walkMin = this.walkMinutes(km);
-    let minutes, mode;
-    if (km < 0.8) { minutes = walkMin; mode = "도보"; }
-    else if (km < 2) { minutes = Math.round(km / 18 * 60) + 15; mode = "셔틀/모노레일"; }
-    else { minutes = Math.round(km / 22 * 60) + 15; mode = "셔틀/택시"; }
+    let ride = null, mode;
+    if (km < 0.8) mode = "도보";
+    else if (km < 2) { ride = Math.round(km / 18 * 60); mode = "셔틀/모노레일"; }
+    else { ride = Math.round(km / 22 * 60); mode = "셔틀/택시"; }
+    // re:Play 오가는 길은 전용 셔틀 (모노레일은 스타디움까지 안 감). 장소를 고쳐도 맞게 일정 id로 판단
+    if (ride != null && [prev, next].some((x) => x.kind === "fixed" && x.id === "replay")) mode = "re:Play 셔틀";
+    const minutes = ride == null ? walkMin : ride + this.RIDE_BUFFER;
     const icon = mode === "도보" ? "🚶" : mode.includes("택시") ? "🚕" : "🚌";
     const label = `${pv} → ${nv} · 약 ${km.toFixed(1)}km · ${mode} ${minutes}분`;
     const dir = (m) => `https://www.google.com/maps/dir/?api=1&origin=${a.lat},${a.lng}&destination=${b.lat},${b.lng}&travelmode=${m}`;
     const maps = dir(mode === "도보" ? "walking" : "driving");
-    return { minutes, mode, icon, label, maps, km, walkMin, walkMaps: dir("walking") };
+    return { minutes, mode, icon, label, maps, km, walkMin, walkMaps: dir("walking"),
+      ride, buffer: ride == null ? null : this.RIDE_BUFFER, walkRide: walkMin - this.WALK_BUFFER, walkBuffer: this.WALK_BUFFER };
   },
   /* 이 날의 이동 구간: 각 일정마다 '그 전에 끝나는 일정 중 가장 늦게 끝나는 것'에서 출발한다고 봄 */
   legsFor(date, list) {
@@ -464,8 +473,10 @@ const Planner = {
     });
     if (hl.end) html += this.hotelRowHTML(hl.end, `${shortVenue(hl.last.it.venue)} → ${home}`,
       `${this.hhmm(hl.last.e)} 종료 후 · ${this.hhmm(hl.last.e + hl.end.minutes)}쯤 도착`);
+    const moves = legs.some((l) => !l.tr.same) || [hl.start, hl.end].some((t) => t && !t.same);
     return `${this.lunchWarning(list) ? `<div class="warn-box">🍽️ 11–14시 사이에 30분 이상 빈 시간이 없어요. 점심을 거르기 쉬우니 스낵을 챙기거나 일정을 하나 조정해 보세요.</div>` : ""}
-      <div class="route">${html}</div>`;
+      <div class="route">${html}</div>
+      ${moves ? `<p class="muted" style="font-size:12px;margin:6px 0 0;">⏱️ 이동 시간은 승하차·건물 이동 여유를 넣은 넉넉한 값이에요 (구글 지도보다 길어요).</p>` : ""}`;
   },
   /* 점심 시간대(11–14시)에 30분 이상 빈 시간이 없으면 true */
   lunchWarning(list) {
@@ -495,21 +506,24 @@ const Planner = {
     if (!l) return;
     const a = l.a.it, b = l.b.it;
     const stLabel = { ok: "여유 있음", tight: "빠듯함", bad: "시간 부족" }[l.status];
-    const sh = (window.APP_DATA.event_info.shuttle || {}).note;
+    const sh = (window.APP_DATA.event_info.shuttle || {}).note, rp = (window.APP_DATA.event_info.shuttle || {}).replay_shuttle;
     const fixes = l.status !== "ok" && b.kind === "session" ? this.routeFixes(l) : [];
     // 이동 수단: 추천 수단 + 도보(시간·거리·사이 시간 안에 가능한지). 좌표 없는 장소는 예상 시간만
     const tr = l.tr, walk = tr.walkMin != null, walkFits = walk && tr.walkMin <= l.gap;
     const recTag = ` <span class="badge info">추천</span>`;
     const modeRows = tr.same || !walk
       ? `<div class="kv"><span>예상 이동 시간</span><b>${tr.minutes}분</b></div>`
-      : `${tr.mode === "도보" ? "" : `<div class="kv"><span>${tr.icon} ${esc(tr.mode)}${recTag}</span><b>약 ${tr.minutes}분</b></div>`}
+      : `${tr.mode === "도보" ? "" : `<div class="kv"><span>${tr.icon} ${esc(tr.mode)}${recTag}<br>
+          <small class="muted">${tr.mode.includes("택시") ? "차로" : "타고"} ${tr.ride}분 + 승차장까지 걷기·대기 ${tr.buffer}분</small></span><b>약 ${tr.minutes}분</b></div>`}
         <div class="kv"><span>🚶 도보${tr.mode === "도보" ? recTag : ""}<br>
-          <small class="${walkFits ? "st-text st-ok" : "muted"}">약 ${tr.walkMin}분 · 직선 ${tr.km.toFixed(1)}km · ${walkFits ? "사이 시간 안에 걸어갈 수 있어요" : `걸으면 ${tr.walkMin - l.gap}분 부족`}</small></span>
+          <small class="${walkFits ? "st-text st-ok" : "muted"}">약 ${tr.walkMin}분 · 걷기 ${tr.walkRide}분 + 건물 출입 ${tr.walkBuffer}분 · 직선 ${tr.km.toFixed(1)}km · ${walkFits ? "사이 시간 안에 걸어갈 수 있어요" : `걸으면 ${tr.walkMin - l.gap}분 부족`}</small></span>
           ${tr.mode === "도보" ? "" : `<a class="btn ghost small map-btn" href="${tr.walkMaps}" target="_blank" rel="noopener">도보 길찾기</a>`}</div>`;
     const tips = l.tr.same
       ? "같은 베뉴라도 건물이 넓어 층·구역 이동에 10–15분 걸릴 수 있어요. 방 번호를 미리 확인하세요."
       : l.tr.mode === "도보"
         ? "가까운 베뉴라 걸어서 이동할 수 있어요. 카지노 층을 가로지르면 길을 잃기 쉬우니 'Walk to …' 안내판을 따라가세요."
+        : l.tr.mode === "re:Play 셔틀"
+          ? `re:Play 전용 셔틀이 베뉴와 행사장을 오가요${rp ? ` (${esc(rp.replace(/\s*\([^)]*\)\s*$/, ""))})` : ""}. 급하면 택시·Uber(지정 승차장)를 이용하세요.`
         : `베뉴 간 셔틀은 배지 소지자만 탈 수 있어요.${sh ? " " + esc(sh) : ""} 급하면 택시·Uber(지정 승차장)를 이용하세요.`;
     openSheet({
       title: "이동 정보",
@@ -524,7 +538,7 @@ const Planner = {
         <div class="kv"><span>늦어도 출발</span><b>${this.hhmm(l.leaveBy)}</b></div>
         <div class="kv"><span>상태</span><b class="st-text st-${l.status}">${stLabel} · ${esc(this.legStatusText(l))}</b></div>
         <div class="${l.status === "bad" ? "danger-box" : "notice"}">${l.status === "bad" ? "⚠️ 앞 일정을 일찍 나오거나 다음 세션 시작에 늦을 수 있어요. " : "💡 "}${tips}</div>
-        <p class="muted" style="font-size:12px;margin:6px 0 0;">이동 시간은 베뉴 간 직선거리로 추정한 값이에요. 혼잡 시간엔 더 걸려요.${b.kind === "session" ? ` 예약석은 세션 시작 10분 전까지 도착해야 유지돼요.` : ""}</p>
+        <p class="muted" style="font-size:12px;margin:6px 0 0;">${l.tr.same ? "" : "⏱️ 늦지 않게 여유를 넣은 보수적인 시간이에요. 구글 지도는 건물 앞→건물 앞 시간이라 더 짧게 나와요."}${b.kind === "session" ? ` 예약석은 세션 시작 10분 전까지 도착해야 유지돼요.` : ""}</p>
         ${fixes.length ? `<h3 style="margin:16px 0 6px;">💡 동선 개선 제안</h3>
         <p class="muted" style="font-size:13px;margin:0 0 4px;">'${esc((b.title || "").slice(0, 40))}' 대신, ${esc(a.venue)}에서 제시간에 갈 수 있는 비슷한 세션이에요.</p>
         ${fixes.map((c) => Suggest.rowHTML(c, { near: a.venue, swap: true, baseId: this.itemId(b) })).join("")}` : ""}`,

@@ -395,7 +395,7 @@ const RouteInfo = {
     venues.forEach((a, i) => venues.slice(i + 1).forEach((b) => pairs.push([a, b, Planner.havKm(a, b)])));
     pairs.sort((x, y) => x[2] - y[2]);
     return `<h3>🚶 베뉴 간 도보 거리</h3>
-      <p class="muted" style="font-size:12px;margin:0 0 4px;">직선거리 기준 추정이에요. 실제로는 카지노 내부·육교를 지나 더 걸릴 수 있어요.</p>` +
+      <p class="muted" style="font-size:12px;margin:0 0 4px;">직선거리에 건물 출입 ${Planner.WALK_BUFFER}분을 더한 넉넉한 값이에요. 구글 지도보다 길게 나와요.</p>` +
       pairs.map(([a, b, km]) => `<div class="kv"><span>${esc(shortVenue(a.name))} ↔ ${esc(shortVenue(b.name))}</span><b>약 ${Planner.walkMinutes(km)}분 · ${km.toFixed(1)}km</b></div>`).join("");
   },
   shuttleHTML() {
