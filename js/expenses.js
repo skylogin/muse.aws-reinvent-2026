@@ -29,6 +29,7 @@ const Receipts = {
   put(id, blob) { return this.run("readwrite", (st) => st.put(blob, id)); },
   get(id) { return this.run("readonly", (st) => st.get(id)); },
   del(id) { return this.run("readwrite", (st) => st.delete(id)).catch(() => {}); },
+  keys() { return this.run("readonly", (st) => st.getAllKeys()).then((k) => k || []); },
   /* 긴 변 1600px JPEG로 줄여 저장 (사진 한 장 보통 200–400KB) */
   compress(file) {
     return new Promise((res, rej) => {
@@ -275,7 +276,8 @@ const Expenses = {
       const recId = cur ? cur.id : "ex" + Date.now();
       let img = cur ? cur.receipt_img || "" : "";
       try {
-        if (photo) { img = "rc-" + recId; await Receipts.put(img, photo); }
+        // 사진을 바꿀 때마다 새 번호: 지출 항목이 바뀐 것으로 기록돼 다른 기기와 합칠 때 새 사진이 따라감
+        if (photo) { const old = img; img = "rc-" + recId + "-" + Date.now().toString(36); await Receipts.put(img, photo); if (old && old !== img) await Receipts.del(old); }
         else if (photo === null && img) { await Receipts.del(img); img = ""; }
       } catch (err) { toast("사진을 저장하지 못했어요 (저장 공간 확인)"); return; }
       const rec = {
@@ -323,7 +325,7 @@ const Expenses = {
         </div>
         <button class="btn block left" id="xp-csv">📄 엑셀용 CSV 파일 저장<br><span class="muted" style="font-size:12px;font-weight:400;">날짜·구분·카테고리·금액(USD/KRW)·영수증 여부 + 합계</span></button>
         <button class="btn ghost block left" id="xp-photos"${photos.length ? "" : " disabled"}>📷 영수증 사진 모아 저장·공유<br><span class="muted" style="font-size:12px;font-weight:400;">파일 이름이 CSV의 '영수증 사진' 칸과 같아요</span></button>
-        <p class="muted" style="font-size:12px;margin-top:10px;">영수증 사진은 이 기기에만 저장돼요. '다른 기기로 옮기기'·백업 파일에는 포함되지 않으니, 출장이 끝나면 여기서 한 번 저장해 두세요.</p>`,
+        <p class="muted" style="font-size:12px;margin-top:10px;">영수증 사진은 이 기기에 저장되고, '다른 기기로 보내기' 파일에 함께 들어가요. 출장이 끝나면 여기서 한 번 모아 저장해 두세요.</p>`,
       actions: `<button class="btn ghost" id="xp-close" style="flex:1;">닫기</button>`
     });
     $("#xp-close").onclick = () => $("#modal-overlay")._dismiss();
