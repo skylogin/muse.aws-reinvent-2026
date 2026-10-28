@@ -155,5 +155,71 @@ const Sync = (() => {
     return out;
   }
 
-  return { LOCAL_KEYS, units, track, rebuild, synced };
+  /* 한 단위의 양쪽 기록 중 남길 쪽 (스펙 4.3 표). side = { del, t, v } 또는 null(모름) */
+  function pick(l, r) {
+    if (!l) return r;
+    if (!r) return l;
+    if (l.t !== r.t) return r.t > l.t ? r : l;
+    if (l.del && r.del) return l;
+    if (l.del !== r.del) return l.t === 0 ? r : (l.del ? l : r); // 같은 시각: 삭제 쪽 (기록 없으면 가져온 쪽)
+    if (l.v === r.v) return l;
+    return l.t === 0 ? r : (r.v > l.v ? r : l); // 기록 없는 예전 항목 → 가져온 쪽, 아니면 어느 기기에서 합쳐도 같게
+  }
+
+  /* 항목별로 나중에 고친 쪽을 남겨 합침. remote = 합치는 키 + sync(없을 수 있음) */
+  function merge(local, remote, opts) {
+    opts = opts || {};
+    const cfg = opts.cfg;
+    local = local || {}; remote = remote || {};
+    const lm = local[META] || {}, rm = remote[META] || {};
+    const lu = units(local, cfg), ru = units(remote, cfg);
+    const side = (u, m, k) => (k in u ? { del: false, t: (m.stamps || {})[k] || 0, v: u[k] }
+      : (m.tombs && k in m.tombs) ? { del: true, t: m.tombs[k] } : null);
+    const keys = new Set([...Object.keys(lu), ...Object.keys(ru), ...Object.keys(lm.tombs || {}), ...Object.keys(rm.tombs || {})]);
+    const chosen = {}, stamps = {}, tombs = {}, rows = {};
+    let total = 0, overwritten = 0, unrecorded = false;
+    const count = (k, f) => { const c = splitKey(k)[0]; (rows[c] = rows[c] || { add: 0, change: 0, del: 0 })[f]++; total++; };
+    keys.forEach((k) => {
+      const l = side(lu, lm, k), r = side(ru, rm, k);
+      if ((l && !l.del && !l.t) || (r && !r.del && !r.t)) unrecorded = true;
+      const p = pick(l, r);
+      if (!p) return;
+      if (p.del) tombs[k] = p.t;
+      else { chosen[k] = JSON.parse(p.v); if (p.t) stamps[k] = p.t; }
+      const had = !!l && !l.del, has = !p.del;
+      if (!had && has) count(k, "add");
+      else if (had && !has) count(k, "del");
+      else if (had && has && l.v !== p.v) count(k, "change");
+      // 지난번에 받은 뒤 이 기기에서 고친(지운) 것이 다른 기기의 더 나중 수정에 덮이는 경우
+      if (p === r && l && (l.del !== r.del || l.v !== r.v) && l.t > (opts.lastReceivedAt || 0)) overwritten++;
+    });
+    const state = {};
+    LOCAL_KEYS.forEach((k) => { if (k in local) state[k] = local[k]; });
+    Object.assign(state, rebuild(local, remote, chosen, cfg));
+    state[META] = { stamps, tombs };
+    const stale = opts.remoteExportedAt != null && opts.lastReceivedExportedAt != null && opts.remoteExportedAt < opts.lastReceivedExportedAt;
+    // 예전 데이터 안내: 이 기기에서 처음 합칠 때만 (기록 없는 항목이 있으면)
+    const legacy = opts.lastReceivedAt == null && unrecorded;
+    return { state, summary: { rows, total, overwritten, legacy, stale } };
+  }
+
+  /* 덮어쓰기·되돌리기: 합치는 키와 기록은 data 것으로, 기기별 키는 이 기기 것으로 */
+  function replaceSynced(local, data) {
+    data = JSON.parse(J(data || {}));
+    const state = {};
+    Object.keys(data).forEach((k) => { if (!LOCAL_KEYS.includes(k)) state[k] = data[k]; });
+    LOCAL_KEYS.forEach((k) => { if (local && k in local) state[k] = local[k]; });
+    const m = isObj(data[META]) ? data[META] : {};
+    state[META] = { stamps: m.stamps || {}, tombs: m.tombs || {} };
+    return state;
+  }
+
+  /* 덮어쓰면 사라지는 것: 이 기기에만 있는 단위 수 (컬렉션별) */
+  function lost(local, data, cfg) {
+    const lu = units(local, cfg), du = units(data, cfg), out = {};
+    Object.keys(lu).forEach((k) => { if (!(k in du)) { const c = splitKey(k)[0]; out[c] = (out[c] || 0) + 1; } });
+    return out;
+  }
+
+  return { LOCAL_KEYS, units, track, rebuild, synced, merge, replaceSynced, lost };
 })();
