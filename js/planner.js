@@ -128,6 +128,8 @@ const Planner = {
     if (km < 0.8) mode = "도보";
     else if (km < 2) { ride = Math.round(km / 18 * 60); mode = "셔틀/모노레일"; }
     else { ride = Math.round(km / 22 * 60); mode = "셔틀/택시"; }
+    // re:Play 오가는 길은 전용 셔틀 (모노레일은 스타디움까지 안 감). 장소를 고쳐도 맞게 일정 id로 판단
+    if (ride != null && [prev, next].some((x) => x.kind === "fixed" && x.id === "replay")) mode = "re:Play 셔틀";
     const minutes = ride == null ? walkMin : ride + this.RIDE_BUFFER;
     const icon = mode === "도보" ? "🚶" : mode.includes("택시") ? "🚕" : "🚌";
     const label = `${pv} → ${nv} · 약 ${km.toFixed(1)}km · ${mode} ${minutes}분`;
@@ -504,7 +506,7 @@ const Planner = {
     if (!l) return;
     const a = l.a.it, b = l.b.it;
     const stLabel = { ok: "여유 있음", tight: "빠듯함", bad: "시간 부족" }[l.status];
-    const sh = (window.APP_DATA.event_info.shuttle || {}).note;
+    const sh = (window.APP_DATA.event_info.shuttle || {}).note, rp = (window.APP_DATA.event_info.shuttle || {}).replay_shuttle;
     const fixes = l.status !== "ok" && b.kind === "session" ? this.routeFixes(l) : [];
     // 이동 수단: 추천 수단 + 도보(시간·거리·사이 시간 안에 가능한지). 좌표 없는 장소는 예상 시간만
     const tr = l.tr, walk = tr.walkMin != null, walkFits = walk && tr.walkMin <= l.gap;
@@ -520,6 +522,8 @@ const Planner = {
       ? "같은 베뉴라도 건물이 넓어 층·구역 이동에 10–15분 걸릴 수 있어요. 방 번호를 미리 확인하세요."
       : l.tr.mode === "도보"
         ? "가까운 베뉴라 걸어서 이동할 수 있어요. 카지노 층을 가로지르면 길을 잃기 쉬우니 'Walk to …' 안내판을 따라가세요."
+        : l.tr.mode === "re:Play 셔틀"
+          ? `re:Play 전용 셔틀이 베뉴와 행사장을 오가요${rp ? ` (${esc(rp.replace(/\s*\([^)]*\)\s*$/, ""))})` : ""}. 급하면 택시·Uber(지정 승차장)를 이용하세요.`
         : `베뉴 간 셔틀은 배지 소지자만 탈 수 있어요.${sh ? " " + esc(sh) : ""} 급하면 택시·Uber(지정 승차장)를 이용하세요.`;
     openSheet({
       title: "이동 정보",
