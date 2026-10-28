@@ -600,70 +600,146 @@ let deferredPrompt = null;
 window.addEventListener("beforeinstallprompt", (e) => {
   e.preventDefault();
   deferredPrompt = e;
-  const b = $("#install-now");
+  const b = $("#inst-now");
   if (b) b.classList.remove("hidden");
 });
+window.addEventListener("appinstalled", installDone); // 브라우저 메뉴로 설치한 경우도
 async function doInstallPrompt() {
   if (!deferredPrompt) { toast("이 기기에서는 자동 설치를 지원하지 않아요"); return; }
   deferredPrompt.prompt();
   try {
     const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === "accepted") {
-      S().install_dismissed = true; Store.save();
-      hideInstallGuide();
-      toast("설치가 시작됐어요 📲");
-    }
+    if (outcome === "accepted") installDone();
   } catch (e) {}
   deferredPrompt = null;
-  const b = $("#install-now");
+  const b = $("#inst-now");
   if (b) b.classList.add("hidden");
+}
+/* 설치됨: 설정의 설치 안내는 닫고, 온보딩 첫 화면은 '홈 화면 아이콘으로 여세요'로 바꿈 */
+function installDone() {
+  S().install_dismissed = true; Store.save();
+  const g = $("#install-guide");
+  if (g && !g.classList.contains("hidden")) { hideInstallGuide(); toast("설치가 시작됐어요 📲"); }
+  const box = $("#onboarding #inst-box");
+  if (box) box.innerHTML = `<div class="notice">✅ 설치했어요! 홈 화면의 <strong>re:invent 2026</strong> 아이콘으로 열어서 시작해 주세요.</div>`;
 }
 
 /* ---------- install guide (PWA) ---------- */
 function isStandalone() {
   return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
 }
-function platform() {
+/* 접속 환경: os(ios|android|desktop) · browser · inapp(kakao|line|other — 앱 안 브라우저라 설치 불가) */
+function browserEnv() {
   const ua = navigator.userAgent || "";
-  if (/iphone|ipad|ipod/i.test(ua)) return "ios";
-  if (/android/i.test(ua)) return "android";
-  return "other";
+  const os = /iphone|ipad|ipod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? "ios" // iPadOS는 Mac으로 보임
+    : /android/i.test(ua) ? "android" : "desktop";
+  const inapp = /KAKAOTALK/i.test(ua) ? "kakao" : /\bLine\//.test(ua) ? "line"
+    : /NAVER\(inapp|Instagram|FBAN|FBAV|FB_IAB|DaumApps|BAND\/|everytimeApp|; wv\)/i.test(ua) ? "other"
+    : os === "ios" && !/Safari\//.test(ua) ? "other" : null; // iOS 앱 안 웹뷰는 'Safari/'가 없음
+  const browser = /SamsungBrowser/.test(ua) ? "samsung" : /EdgA|EdgiOS|Edg\//.test(ua) ? "edge"
+    : /Whale/.test(ua) ? "whale" : /FxiOS|Firefox/.test(ua) ? "firefox"
+    : /CriOS|Chrome/.test(ua) ? "chrome" : /Safari/.test(ua) ? "safari" : "other";
+  return { os, browser, inapp };
+}
+/* 설치할 주소: 이 페이지 + 공유 링크로 들어왔다면 그 코드 (Share.checkLink가 주소에서 지우고 보관해 둠) */
+function installURL() {
+  const code = Share.peekPending();
+  return location.origin + location.pathname + location.search + (code ? "#share=" + code : "");
+}
+/* 앱 안 브라우저 → 기본 브라우저로 여는 주소. iOS의 다른 앱은 방법이 없어 null (메뉴 안내)
+   Android intent는 주소의 #을 넘기지 못해 공유 코드가 빠짐 (Chrome이 없으면 fallback 주소로 엶) */
+function externalURL(env) {
+  const url = installURL();
+  if (env.inapp === "kakao") return "kakaotalk://web/openExternal?url=" + encodeURIComponent(url);
+  if (env.inapp === "line") { const u = new URL(url); u.searchParams.set("openExternalBrowser", "1"); return u.href; }
+  if (env.os !== "android") return null;
+  const u = new URL(url);
+  return `intent://${u.host}${u.pathname}${u.search}#Intent;scheme=${u.protocol.replace(":", "")};package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(url)};end`;
+}
+/* 환경별 설치 방법 (온보딩 첫 화면 · 설정 → 설치 안내 공용). bindInstallBlock()으로 버튼 연결 */
+function installBlock(env) {
+  const add = `<strong>"홈 화면에 추가"</strong>`;
+  const run = `<li>홈 화면의 <strong>re:invent 2026</strong> 아이콘으로 실행하세요</li>`;
+  const now = `<button class="btn accent block${deferredPrompt ? "" : " hidden"}" id="inst-now">📲 바로 설치하기</button>`;
+  const copy = `<button class="btn ghost block" id="inst-copy">🔗 주소 복사</button>`;
+  let html;
+  if (env.inapp) {
+    const name = { kakao: "카카오톡", line: "LINE" }[env.inapp] || "이 앱";
+    const target = env.os === "ios" ? "Safari" : "Chrome";
+    const ext = externalURL(env);
+    html = `<div class="warn-box">${name} 안의 브라우저에서는 홈 화면에 추가할 수 없어요. <strong>${target}</strong>에서 연 다음 설치해 주세요.</div>
+      ${ext ? `<a class="btn accent block" id="inst-ext" href="${esc(ext)}">${target}에서 열기</a>`
+        : `<ol class="inst-steps"><li>화면 위나 아래의 <strong>···</strong> 메뉴를 누르세요</li><li><strong>"Safari로 열기"</strong>(또는 "브라우저로 열기")를 누르세요</li></ol>`}
+      ${copy}`;
+  } else if (env.os === "ios") {
+    html = env.browser === "safari"
+      ? `<ol class="inst-steps"><li>주소창의 <strong>공유 버튼(⎙)</strong>을 누르세요<br><span class="muted">안 보이면 <strong>···</strong> → 공유</span></li><li>목록을 올려 ${add}를 누르세요</li><li>오른쪽 위 <strong>추가</strong>를 누르세요</li>${run}</ol>`
+      : `<ol class="inst-steps"><li>주소창 오른쪽의 <strong>공유 버튼(⎙)</strong>을 누르세요</li><li>${add}를 누르세요</li>${run}</ol>
+        <p class="muted inst-note">메뉴에 없으면 주소를 복사해 Safari에서 열어 주세요.</p>${copy}`;
+  } else if (env.os === "android") {
+    const menu = env.browser === "samsung" ? `아래 <strong>≡ 메뉴</strong> → <strong>"현재 페이지 추가"</strong> → <strong>"홈 화면"</strong>을 누르세요`
+      : env.browser === "chrome" ? `오른쪽 위 <strong>⋮ 메뉴</strong> → <strong>"앱 설치"</strong> 또는 ${add}를 누르세요`
+      : `브라우저 메뉴에서 <strong>"앱 설치"</strong> 또는 ${add}를 누르세요`;
+    html = `${now}<ol class="inst-steps"><li>${menu}</li>${run}</ol>`;
+  } else {
+    const menu = env.browser === "safari" ? `메뉴 막대의 <strong>파일 → "Dock에 추가"</strong>를 누르세요`
+      : env.browser === "firefox" ? `Firefox는 앱 설치를 지원하지 않아요. Chrome이나 Edge에서 열어 주세요`
+      : `주소창 오른쪽의 <strong>설치 아이콘</strong> 또는 메뉴 → <strong>"앱 설치"</strong>를 누르세요`;
+    html = `${now}<ol class="inst-steps"><li>${menu}</li></ol>`;
+  }
+  return `<div id="inst-box">${html}</div>`;
+}
+function bindInstallBlock() {
+  const now = $("#inst-now");
+  if (now) now.onclick = doInstallPrompt;
+  const cp = $("#inst-copy");
+  if (cp) cp.onclick = async () => {
+    const url = installURL();
+    try { await navigator.clipboard.writeText(url); toast("주소를 복사했어요"); } catch (e) { prompt("아래 주소를 복사하세요", url); }
+  };
 }
 function maybeShowInstallGuide(force) {
   if (isStandalone()) { if (force) toast("이미 앱으로 실행 중이에요 👍"); return; }
   if (S().install_dismissed && !force) return;
-  const pf = platform();
-  let how = "";
-  if (pf === "ios") how = `<li>Safari 하단 <strong>공유 버튼(⎙)</strong>을 누르세요</li><li><strong>"홈 화면에 추가"</strong>를 선택하세요</li><li>홈 화면의 아이콘으로 실행하면 앱처럼 켜집니다</li>`;
-  else if (pf === "android") how = `<li>Chrome 메뉴(⋮)에서 <strong>"앱 설치"</strong> 또는 <strong>"홈 화면에 추가"</strong>를 선택하세요</li><li>홈 화면의 아이콘으로 실행하면 앱처럼 켜집니다</li>`;
-  else how = `<li>브라우저 메뉴에서 "홈 화면에 추가"/"바로가기 만들기"를 선택하세요</li>`;
   const el = $("#install-guide");
   el.classList.remove("hidden");
   el.innerHTML = `<div class="sheet">
     <h2>📲 홈 화면에 추가하기</h2>
     <p class="muted">이 앱을 홈 화면에 추가하면 주소창 없이 앱처럼 실행됩니다.</p>
-    <ol style="padding-left:20px;font-size:14px;">${how}</ol>
+    ${installBlock(browserEnv())}
     <div class="notice">설치 후에는 <strong>홈 화면 아이콘</strong>으로 실행해 주세요. (브라우저로 열면 저장된 데이터가 다르게 보일 수 있습니다)</div>
-    <button class="btn accent block hidden" id="install-now">⬇️ 바로 설치하기</button>
     <button class="btn block" id="install-ok">확인</button>
     <button class="btn ghost block" id="install-never">다시 보지 않기</button>
   </div>`;
+  bindInstallBlock();
   $("#install-ok").onclick = hideInstallGuide;
   $("#install-never").onclick = () => { S().install_dismissed = true; Store.save(); hideInstallGuide(); };
-  const inBtn = $("#install-now");
-  if (inBtn) {
-    if (deferredPrompt) inBtn.classList.remove("hidden");
-    inBtn.onclick = doInstallPrompt;
-  }
   Nav.sync();
 }
 function hideInstallGuide() { $("#install-guide").classList.add("hidden"); Nav.sync(); }
 
 /* ---------- onboarding ---------- */
+/* 모바일 브라우저는 설치부터: iOS는 브라우저와 홈 화면 앱의 저장 공간이 따로라 여기서 입력한 프로필이 앱에 없음 */
 function startOnboarding() {
   const el = $("#onboarding");
   el.classList.remove("hidden");
-  stepNotice();
+  if (!isStandalone() && browserEnv().os !== "desktop" && !S().install_dismissed) stepInstall();
+  else stepNotice();
+}
+function stepInstall() {
+  const env = browserEnv();
+  obShell(`
+    <h2>📲 먼저 앱으로 설치해 주세요</h2>
+    <p class="muted inst-note">홈 화면에 추가한 앱에서 시작하면 프로필 입력을 한 번만 하면 돼요.${env.os === "ios" && !env.inapp ? " iPhone·iPad는 브라우저와 앱의 저장 공간이 따로라서, 여기서 입력하면 앱에서 다시 입력해야 해요." : ""}</p>
+    ${installBlock(env)}
+    ${Share.peekPending() ? `<p class="muted inst-note">이미 앱을 설치했다면 '브라우저에서 그냥 쓸게요'로 동료 일정을 연 뒤, <strong>코드 복사</strong>해서 앱에 붙여넣으세요.</p>` : ""}
+    <button class="link-btn ob-skip" id="ob-skip">브라우저에서 그냥 쓸게요</button>`);
+  bindInstallBlock();
+  $("#ob-skip").onclick = () => {
+    Store.load(); // Android는 설치한 앱과 저장 공간이 같음 — 그새 앱에서 온보딩을 마쳤다면 덮어쓰지 않게
+    S().install_dismissed = true; Store.save();
+    if (S().onboarded) finishOnboarding(); else stepNotice();
+  };
 }
 function obShell(inner) {
   $("#onboarding").innerHTML = `<div class="sheet" style="margin:auto;max-width:480px;">
@@ -1082,7 +1158,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $$("#tabbar button").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
   $("#hdr-settings").onclick = () => switchTab("settings");
   Nav.init(); // 첫 화면은 주소(#/…)에 따라 — 부팅 중에는 뒤로가기 함정을 쌓지 않음
-  if (!S().onboarded) { startOnboarding(); Share.checkLink(); }
+  if (!S().onboarded) { Share.checkLink(); startOnboarding(); } // 공유 코드를 먼저 보관 (설치 화면이 외부 브라우저로 넘길 때 씀)
   else {
     Share.checkLink(); // 공유 해시를 먼저 소비 (설치 안내가 주소를 바꾸기 전에)
     maybeShowInstallGuide();

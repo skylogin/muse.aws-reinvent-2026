@@ -417,6 +417,13 @@ body.modal-open #toast { bottom: auto; top: calc(12px + env(safe-area-inset-top)
 [data-theme="dark"] .warn-box { background: #2e2410; border-color: #6b551f; }
 [data-theme="dark"] .danger-box { background: #331a1a; border-color: #6e2b2b; }
 
+/* ---------- install guide (온보딩 첫 화면 · 설정 공용) ---------- */
+.inst-steps { padding-left: 20px; font-size: 14px; margin: 10px 0; }
+.inst-steps li { margin: 6px 0; }
+.inst-steps .muted { font-size: 12px; }
+.inst-note { font-size: 13px; margin: 6px 0; }
+.ob-skip { display: block; margin: 10px auto 0; font-size: 13px; }
+
 /* ---------- checklists ---------- */
 .check-item { display: flex; gap: 10px; align-items: flex-start; padding: 9px 4px;
   border-bottom: 1px solid var(--line); cursor: pointer; }

@@ -246,6 +246,10 @@ const Share = {
     this._pending = null;
     if (!code) return;
     try { this.preview(this.parse(code), true); } catch (e) { toast("공유 링크를 읽을 수 없어요"); }
+  },
+  /* 온보딩 전에 보관해 둔 공유 코드 (꺼내지 않고 보기만) */
+  peekPending() {
+    try { return this._pending || sessionStorage.getItem(this.pendingKey); } catch (e) { return this._pending; }
   }
 };
 
