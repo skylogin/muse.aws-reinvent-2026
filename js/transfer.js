@@ -61,9 +61,12 @@ const Transfer = {
       }
     }
     const env = Sync.envelope({ data: JSON.parse(JSON.stringify(Sync.synced(S()))), exported_at: now, from: deviceLabel(), receipts });
-    const file = new File([JSON.stringify(env)], this.fileName(new Date(now)), { type: "application/json" });
+    const text = JSON.stringify(env), name = this.fileName(new Date(now));
+    const file = new File([text], name, { type: "application/json" });
+    // Android Chrome·삼성 인터넷은 공유 창에 .json을 못 넘김 → 같은 내용의 .txt (받을 때 내용으로 읽음)
+    const txt = new File([text], name.replace(/\.json$/, ".txt"), { type: "text/plain" });
     const code = await Sync.encodeCode(env);
-    return { file, code, photos, bytes };
+    return { file, txt, code, photos, bytes };
   },
   undoInfo() {
     try { const u = JSON.parse(localStorage.getItem(this.UNDO_KEY) || "null"); return u && u.at ? { at: u.at } : null; } catch (e) { return null; }
@@ -108,6 +111,8 @@ const Transfer = {
     let u = null;
     try { u = JSON.parse(localStorage.getItem(this.UNDO_KEY) || "null"); } catch (e) { /* 무시 */ }
     if (!u || !u.data) { toast("되돌릴 가져오기가 없어요"); return; }
+    const m = S().sync || {}, after = Object.values(m.stamps || {}).concat(Object.values(m.tombs || {})).filter((t) => t > u.at).length;
+    if (after && !confirm(`가져온 뒤 이 기기에서 고친 ${after}건도 함께 사라져요. 되돌릴까요?`)) return;
     Store.replace(Sync.replaceSynced(S(), u.data));
     try { localStorage.removeItem(this.UNDO_KEY); } catch (e) { /* 무시 */ }
     const bar = $("#undo-bar");
@@ -148,7 +153,8 @@ const TransferUI = {
     const ready = (on) => {
       btns.forEach((s) => { const b = $(s); if (b) b.disabled = !on; });
       const sh = $("#sd-share");
-      if (sh) sh.textContent = on ? (this.canShareFile(prepared.file) ? "📤 공유하기로 보내기" : "📤 파일 저장하고 보내기") : "준비 중…";
+      if (sh) sh.textContent = on ? (this.shareable(prepared) ? "📤 공유하기로 보내기" : "📤 파일 저장하고 보내기") : "준비 중…";
+      if (on && !this.shareable(prepared) && browserEnv().os !== "desktop") $("#sd-hint").textContent = "이 브라우저는 공유 창으로 파일을 못 보내요. 저장한 파일을 카톡·AirDrop으로 보내세요";
     };
     const prepare = async () => {
       const my = ++token;
@@ -166,8 +172,9 @@ const TransferUI = {
     $("#sd-share").onclick = () => {
       const p = prepared;
       if (!p) return;
-      if (this.canShareFile(p.file)) {
-        navigator.share({ files: [p.file], title: "re:Invent 출장 앱 데이터" })
+      const f = this.shareable(p);
+      if (f) {
+        navigator.share({ files: [f], title: "re:Invent 출장 앱 데이터" })
           .then(() => this.sent())
           .catch((e) => { if (!e || e.name !== "AbortError") this.saveFile(p.file); });
       } else this.saveFile(p.file);
@@ -183,6 +190,8 @@ const TransferUI = {
     };
     prepare();
   },
+  /* 공유 창에 넘길 수 있는 파일 (.json 우선, 안 되면 .txt), 둘 다 안 되면 null */
+  shareable(p) { return this.canShareFile(p.file) ? p.file : p.txt && this.canShareFile(p.txt) ? p.txt : null; },
   canShareFile(file) {
     try { return !!(navigator.canShare && navigator.share && navigator.canShare({ files: [file] })); } catch (e) { return false; }
   },
@@ -213,7 +222,7 @@ const TransferUI = {
         <div class="rv-drop" id="rv-drop">
           <div class="rv-ico" aria-hidden="true">📂</div>
           <b>${desktop ? "여기에 파일을 끌어다 놓으세요" : "받은 파일을 골라 주세요"}</b>
-          <label class="btn" style="cursor:pointer;">파일 선택<input type="file" id="rv-file" accept=".json,application/json" style="display:none;"></label>
+          <label class="btn" style="cursor:pointer;">파일 선택<input type="file" id="rv-file" accept=".json,application/json,.txt,text/plain" style="display:none;"></label>
         </div>
         <p class="muted" style="font-size:12px;margin:6px 0 0;">AirDrop·카톡으로 받은 파일은 ${desktop ? "다운로드 폴더" : "파일 앱 → 다운로드"}에 있어요. 바로 합치지 않고 무엇이 바뀌는지 먼저 보여드려요.</p>
         <label class="field" style="display:block;margin-top:14px;">또는 텍스트 코드 붙여넣기</label>
@@ -256,6 +265,7 @@ const TransferUI = {
     if (photos) lines.push(["영수증 사진", `+${photos}`]);
     const notes = [];
     if (summary.overwritten) notes.push(`<div class="warn-box">⚠️ 이 기기에서 고친 것 중 ${summary.overwritten}건은 다른 기기에서 나중에 고쳐서 그쪽으로 바뀌어요.</div>`);
+    if (summary.legacyOverwritten) notes.push(`<div class="warn-box">⚠️ 기록이 없는 예전 항목 ${summary.legacyOverwritten}건은 가져온 값으로 바뀌어요. 이 기기 값을 지키려면 취소하고, 이 기기에서 먼저 보내 주세요.</div>`);
     if (summary.stale) notes.push(`<div class="notice">이전에 보낸 파일이에요. 합쳐도 최신 내용은 그대로 남아요.</div>`);
     if (summary.legacy) notes.push(`<div class="notice">처음 합칠 때는 예전에 지운 항목이 다시 생길 수 있어요.</div>`);
     const title = parsed.from && parsed.exported_at ? `📥 ${parsed.from}에서 ${Transfer.when(parsed.exported_at)}에 보낸 데이터` : "📥 가져온 데이터";
