@@ -1,5 +1,5 @@
 /* re:Invent 2026 출장 앱 — Service Worker (cache-first, offline ready) */
-const CACHE = "reinvent2026-v46";
+const CACHE = "reinvent2026-v47";
 const ASSETS = [
   "./",
   "./index.html",

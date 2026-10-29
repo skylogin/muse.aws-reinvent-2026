@@ -877,6 +877,14 @@ const Planner = {
       if (next) next.onclick = () => { if (idx < DAYS.length - 1) { idx++; render(); } };
     };
     render();
+  },
+
+  // 하루 앞뒤로 (스와이프·←/→ 키) — 첫날·마지막 날이면 false
+  shiftDay(step) {
+    const i = DAYS.indexOf(plannerDay) + step;
+    if (i < 0 || i >= DAYS.length) return false;
+    plannerManual = true; plannerDay = DAYS[i]; Views.planner();
+    return true;
   }
 };
 
@@ -902,6 +910,7 @@ Views.planner = function () {
       const cf = Planner.allConflicts();
       return cf.length ? `<button class="warn-box conflict-banner" id="pl-conflicts">⚠️ 시간이 겹치는 세션 ${cf.length}건 — 눌러서 점검·정리</button>` : "";
     })()}
+    <div class="pl-day">
     ${allday.length ? `<div id="pl-allday">${allday.map((it) => `
       <button class="allday-chip" data-pitem="${esc(Planner.itemId(it))}" role="button">
         <span class="pin">📌</span>
@@ -916,7 +925,8 @@ Views.planner = function () {
       </div>
     </div>`;
       return Layout.size() === "expanded" ? `<div class="pl-cols"><div class="pl-main">${tl}</div><div class="pl-side">${rc}</div></div>` : tl + rc;
-    })()}`;
+    })()}
+    </div>`;
   $$("#view-planner [data-day]").forEach((b) => b.onclick = () => { plannerManual = true; plannerDay = b.dataset.day; Views.planner(); });
   const act = $("#view-planner .day-tabs .active");
   if (act) act.scrollIntoView({ block: "nearest", inline: "center" });
@@ -946,3 +956,63 @@ Views.planner = function () {
     Suggest.openGap(plannerDay, Number(from), Number(to), near);
   });
 };
+
+/* 좌우로 밀어 날짜 이동: 그날 내용(.pl-day)이 손가락을 따라가다 넘어감.
+   세로로 먼저 움직이면 스크롤, 가로 스크롤 줄(날짜 탭·동료 칩)은 .pl-day 밖이라 무시,
+   화면 가장자리에서 시작하면 시스템 뒤로가기 제스처라 무시 */
+(() => {
+  const view = $("#view-planner");
+  const EDGE = 24, LOCK = 10, GO = 60;
+  let s = null;
+  const reduced = () => !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const atEnd = (step) => { const i = DAYS.indexOf(plannerDay) + step; return i < 0 || i >= DAYS.length; };
+  const back = (pane) => { pane.style.transition = "transform .2s ease"; pane.style.transform = ""; };
+  view.addEventListener("touchstart", (e) => {
+    s = null;
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0], pane = e.target.closest && e.target.closest(".pl-day");
+    if (!pane || t.clientX < EDGE || t.clientX > window.innerWidth - EDGE) return;
+    s = { x: t.clientX, y: t.clientY, t: Date.now(), mode: null, dx: 0, pane };
+  }, { passive: true });
+  view.addEventListener("touchmove", (e) => {
+    if (!s) return;
+    if (e.touches.length !== 1) { if (s.mode === "x") back(s.pane); s = null; return; }
+    const dx = e.touches[0].clientX - s.x, dy = e.touches[0].clientY - s.y;
+    if (!s.mode) {
+      if (Math.abs(dx) < LOCK && Math.abs(dy) < LOCK) return;
+      s.mode = Math.abs(dx) > Math.abs(dy) * 1.2 ? "x" : "y";
+      if (s.mode === "x") s.pane.style.transition = "none";
+    }
+    if (s.mode !== "x") return;
+    s.dx = dx;
+    s.pane.style.transform = `translateX(${atEnd(dx < 0 ? 1 : -1) ? dx / 4 : dx}px)`; // 끝 날짜는 고무줄처럼
+  }, { passive: true });
+  view.addEventListener("touchcancel", () => { if (s && s.mode === "x") back(s.pane); s = null; });
+  view.addEventListener("touchend", () => {
+    if (!s || s.mode !== "x") { s = null; return; }
+    const { pane, dx } = s, step = dx < 0 ? 1 : -1;
+    const fast = Math.abs(dx) > 30 && Math.abs(dx) / Math.max(1, Date.now() - s.t) > 0.5;
+    s = null;
+    if ((Math.abs(dx) < GO && !fast) || atEnd(step)) { back(pane); return; }
+    if (reduced()) { Planner.shiftDay(step); return; }
+    pane.style.transition = "transform .15s ease-in, opacity .15s ease-in";
+    pane.style.transform = `translateX(${-step * 100}%)`; pane.style.opacity = "0";
+    setTimeout(() => {
+      Planner.shiftDay(step);
+      const np = $("#view-planner .pl-day");
+      np.style.transition = "none"; np.style.transform = `translateX(${step * 30}%)`; np.style.opacity = "0";
+      np.getBoundingClientRect(); // 시작 위치를 먼저 그리게
+      np.style.transition = "transform .2s ease-out, opacity .2s ease-out";
+      np.style.transform = ""; np.style.opacity = "";
+    }, 150);
+  });
+})();
+
+/* PC: ←/→ 키로 날짜 이동 (입력 중·시트가 열려 있을 때·조합키는 무시) */
+document.addEventListener("keydown", (e) => {
+  if (currentTab !== "planner" || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return;
+  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || Nav.overlayCount()) return;
+  const t = e.target;
+  if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
+  if (Planner.shiftDay(e.key === "ArrowRight" ? 1 : -1)) e.preventDefault();
+});
