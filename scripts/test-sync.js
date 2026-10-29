@@ -170,6 +170,28 @@ test("merge: legacy only on this device's first merge", () => {
   const second = Sync.merge(first.state, snap(B.s), { cfg: CFG, lastReceivedAt: 1000 });
   eq(second.summary.legacy, false, "no legacy notice after first merge");
 });
+test("merge: unrecorded real data beats the other device's untouched defaults", () => {
+  // 업데이트 전부터 쓰던 폰(기록 없음) ← 새로 시작한 PC 파일: 폰의 호텔·환율·준비물 체크가 남아야 함
+  const P = device({ fx_rate: 1390, trip: { hotel: { name: "The Venetian", check_in: "" } },
+    checklist: [{ id: "pk0", item: "여권", done: true }, { id: "pk1", item: "ESTA", done: false }] });
+  const C = device();
+  const cfg = Object.assign({ defaultUnits: () => Sync.units(base(), CFG) }, CFG);
+  const { state, summary } = Sync.merge(P.s, snap(C.s), { cfg });
+  eq([state.fx_rate, state.trip.hotel.name, state.checklist[0].done], [1390, "The Venetian", true], "phone keeps its data");
+  eq(summary.total, 0, "nothing changes");
+  // 반대 방향(PC가 폰 파일을 받음)은 폰 값을 가져옴
+  const back = Sync.merge(C.s, snap(P.s), { cfg });
+  eq([back.state.fx_rate, back.state.trip.hotel.name], [1390, "The Venetian"], "fresh PC takes phone data");
+});
+test("merge: unrecorded value replaced by another unrecorded value is counted", () => {
+  const cfg = Object.assign({ defaultUnits: () => Sync.units(base(), CFG) }, CFG);
+  const A = device({ expenses: [ex("ex1", 45)], trip: { hotel: { name: "Venetian", check_in: "" } } });
+  const oldBackup = snap(device({ expenses: [ex("ex1", 10)], trip: { hotel: { name: "Wynn", check_in: "" } } }).s);
+  delete oldBackup.sync; // 업데이트 전 백업
+  const r = Sync.merge(A.s, oldBackup, { cfg, lastReceivedAt: 1000 });
+  eq(r.summary.legacyOverwritten, 2, "ex1 and hotel name replaced without records");
+  eq(Sync.merge(r.state, oldBackup, { cfg, lastReceivedAt: 2000 }).summary.legacyOverwritten, 0, "same file again → nothing to warn");
+});
 test("merge: merged state re-saved stamps nothing", () => {
   const A = device().edit((s) => s.favorites.push("A"), 100), B = device().edit((s) => s.expenses.push(ex("ex1", 5)), 200);
   const M = Sync.merge(A.s, snap(B.s), { cfg: CFG }).state;

@@ -216,7 +216,8 @@ function defaultState() {
   };
 }
 /* 준비물 기본 항목은 아직 안 만들어졌어도(null) 있는 것으로 봄 — 기본 항목이 생기는 순간을 수정으로 치지 않게 */
-const SYNC_CFG = { checklistDefaults: () => Packing.defaults() };
+/* 기록 없는 예전 항목끼리 값이 다르면 기본값 그대로인 쪽보다 실제로 입력한 쪽을 남김 (새로 시작한 기기의 빈 값이 덮지 않게) */
+const SYNC_CFG = { checklistDefaults: () => Packing.defaults(), defaultUnits: () => Sync.units(defaultState(), SYNC_CFG) };
 const Store = {
   state: null,
   prev: {}, // 직전 저장본을 항목 단위로 쪼갠 것 — 저장할 때 무엇이 바뀌었는지 비교
@@ -763,7 +764,7 @@ function stepNotice() {
     <h2>시작하기 전에</h2>
     <div class="notice">
       이 앱은 <strong>서버 없이 동작</strong>합니다. 입력한 정보는 이 브라우저(앱)에만 저장됩니다.<br><br>
-      다른 기기(PC → 모바일 등)에서도 보려면<br><strong>설정 → '다른 기기로 옮기기'에서 코드로 옮겨</strong>주세요.<br><br>
+      다른 기기(PC → 모바일 등)에서도 보려면<br><strong>설정 → '다른 기기와 이어하기'에서 보내고 받아</strong> 주세요.<br>받을 때 두 기기 내용이 합쳐져요.<br><br>
       브라우저 캐시를 지우면 데이터가 사라지니,<br>백업 파일로 보관해 두세요.
     </div>
     <button class="btn block" id="ob-next">확인했어요</button>`);
