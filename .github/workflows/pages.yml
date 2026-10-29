@@ -28,6 +28,7 @@ jobs:
         with:
           node-version: 20
       - run: node scripts/check-data.js
+      - run: node scripts/test-sync.js
 
   deploy:
     if: github.event_name != 'pull_request'

@@ -210,21 +210,34 @@ function defaultState() {
     show_kr_hours: true, // 시간표에 한국 업무시간 표시
     news: [],           // 신규 발표 메모 [{id, title, q, at}]
     expo_booths: [],    // Expo 부스 스탬프 [{id, name, note, visited, visited_at}]
-    last_backup_at: null // 마지막 백업 시각 (파일 저장·코드 복사·공유)
+    last_backup_at: null, // 마지막 백업 시각 (파일 저장·코드 복사·공유)
+    sync: { stamps: {}, tombs: {} }, // 다른 기기와 합칠 때 쓰는 항목별 수정·삭제 시각 (js/sync.js)
+    sync_local: { last_sent_at: null, last_received_at: null, last_received_exported_at: null, last_from: "" } // 이 기기의 보냄·받음 기록
   };
 }
+/* 준비물 기본 항목은 아직 안 만들어졌어도(null) 있는 것으로 봄 — 기본 항목이 생기는 순간을 수정으로 치지 않게 */
+const SYNC_CFG = { checklistDefaults: () => Packing.defaults() };
 const Store = {
   state: null,
+  prev: {}, // 직전 저장본을 항목 단위로 쪼갠 것 — 저장할 때 무엇이 바뀌었는지 비교
   load() {
     try { this.state = JSON.parse(localStorage.getItem(LS_KEY)); } catch (e) { this.state = null; }
     if (!this.state || typeof this.state !== "object") this.state = defaultState();
     // forward-fill new keys
     const d = defaultState();
     for (const k of Object.keys(d)) if (!(k in this.state)) this.state[k] = d[k];
+    this.prev = Sync.units(this.state, SYNC_CFG);
     return this.state;
   },
-  save() { try { localStorage.setItem(LS_KEY, JSON.stringify(this.state)); } catch (e) { toast("저장 공간이 부족합니다"); } },
-  reset() { this.state = defaultState(); this.save(); }
+  save() {
+    const cur = Sync.units(this.state, SYNC_CFG);
+    Sync.track(this.prev, cur, this.state.sync, Date.now());
+    this.prev = cur;
+    try { localStorage.setItem(LS_KEY, JSON.stringify(this.state)); } catch (e) { toast("저장 공간이 부족합니다"); }
+  },
+  /* 합치기·덮어쓰기·되돌리기: 상태를 통째로 바꾸되 가져온 항목에 '방금 수정'을 찍지 않음 */
+  replace(state) { this.state = state; this.prev = Sync.units(state, SYNC_CFG); this.save(); },
+  reset() { this.replace(defaultState()); }
 };
 const S = () => Store.state;
 
@@ -763,7 +776,7 @@ function stepBranch() {
     <button class="btn ghost block" id="ob-import">다른 기기에서 가져오기</button>`);
   $("#ob-new").onclick = stepProfile;
   $("#ob-import").onclick = () => {
-    TransferUI.showImport(() => { S().onboarded = true; Store.save(); finishOnboarding(); }, () => {});
+    TransferUI.showReceive(() => { S().onboarded = true; Store.save(); finishOnboarding(); });
   };
 }
 function stepProfile() {
