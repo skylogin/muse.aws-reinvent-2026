@@ -640,6 +640,7 @@ const Planner = {
         <div class="seg" id="pi-res">
           ${["reserved", "waitlist", "none"].map((v) => `<button class="seg-btn res-${v}${res === v ? " on" : ""}" data-v="${v}">${RES_LABEL[v]}</button>`).join("")}
         </div>
+        ${res !== "reserved" ? Sessions.reserveHTML(it, { big: true }) : ""}
         <label class="field" style="display:block;margin-top:12px;">별점</label>
         <div class="stars" id="pi-stars">${[1, 2, 3, 4, 5].map((i) => `<span data-s="${i}" class="${i <= n.rating ? "on" : ""}">★</span>`).join("")}</div>
         <label class="field" for="pi-memo">메모</label>
@@ -647,6 +648,7 @@ const Planner = {
         ${walkUp}${repHTML}${altHTML}
         <div class="sheet-links">
           <button class="link-btn" id="pi-detail">세션 소개 전체 보기</button>
+          ${res === "reserved" ? Sessions.reserveHTML(it) : ""}
           ${venueCo ? `<a class="link-btn" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${venueCo.lat},${venueCo.lng}">지도에서 보기</a>` : ""}
           <button class="link-btn danger" id="pi-unfav">일정에서 빼기</button>
         </div>`,

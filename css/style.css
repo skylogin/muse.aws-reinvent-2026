@@ -861,3 +861,8 @@ html[data-size="expanded"] .split { grid-template-columns: minmax(360px, 2fr) 3f
 .mg-rows { list-style: none; margin: 0 0 8px; padding: 0; }
 .mg-rows li { padding: 8px 2px; border-bottom: 1px solid var(--line); font-size: 14px; }
 .mg-rows li:last-child { border-bottom: 0; }
+
+/* ---------- AWS Events 예약 버튼 (세션 코드 복사 + 카탈로그) ---------- */
+.reserve-btn { margin-top: 10px; }
+.reserve-btn .rs-code { display: block; font-size: 12px; font-weight: 500; opacity: .85; margin-top: 2px; }
+.reserve-hint { font-size: 12px; text-align: center; margin: 4px 0 0; }

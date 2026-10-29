@@ -289,7 +289,6 @@ const Sessions = {
     const lang = s.language ? (LANG_KO[s.language] || s.language) + " 진행" : "";
     const spk = (s.speakers || []).map((x) => { const p = String(x).split(" · "); return { name: p[0], role: p.slice(1).join(" · ") }; });
     const initials = (n) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
-    const catalog = s.catalog_url || APP_DATA.catalog_url;
     return `
         <div class="sd-badges">
           <span class="badge info">${esc(typeKo(s.session_type))}</span>
@@ -319,9 +318,20 @@ const Sessions = {
         <div class="stars" id="d-stars">${[1, 2, 3, 4, 5].map((i) => `<span data-s="${i}">★</span>`).join("")}</div>
         <textarea id="d-memo" rows="3" placeholder="배운 점, 후속 액션 등"></textarea>
         <div class="sheet-links" style="margin-top:12px;">
-          ${catalog ? `<a class="link-btn" href="${esc(catalog)}" target="_blank" rel="noopener">공식 카탈로그 ›</a>` : ""}
-          <a class="link-btn" href="https://registration.awsevents.com/" target="_blank" rel="noopener">AWS Events에서 예약 ›</a>
+          ${this.reserveHTML(s, { label: "AWS Events에서 예약 ›" })}
         </div>`;
+  },
+  /* AWS Events 예약: 앱·웹 모두 세션별 링크가 없어 세션 코드를 복사하고 공식 카탈로그를 엶 (앱에서도 붙여넣어 검색)
+     opts.big: 아직 예약 전 — 눈에 띄는 버튼 + 모바일은 앱 안내. 아니면 작은 링크 */
+  reserveHTML(s, opts) {
+    opts = opts || {};
+    const code = s.code || s.session_id;
+    if (!code) return "";
+    const href = s.catalog_url || APP_DATA.catalog_url || "https://registration.awsevents.com/";
+    const attrs = `data-reserve-code="${esc(code)}" href="${esc(href)}" target="_blank" rel="noopener"`;
+    if (!opts.big) return `<a class="link-btn" ${attrs}>${esc(opts.label || "AWS Events에서 보기 ›")}</a>`;
+    return `<a class="btn accent block reserve-btn" ${attrs}>🎟️ AWS Events에서 예약 <span class="rs-code">코드 ${esc(code)} 복사</span></a>
+      ${browserEnv().os !== "desktop" ? `<p class="muted reserve-hint">AWS Events 앱을 쓰면 앱의 세션 검색에 붙여넣으세요.</p>` : ""}`;
   },
   detailActionsHTML(mode) {
     return mode === "pane" ? `<button class="btn" id="d-fav"></button>`
@@ -629,3 +639,13 @@ function bindSessionChrome() {
   q.addEventListener("input", () => { paintRecent(); clearTimeout(t); t = setTimeout(run, 250); });
   q.addEventListener("keydown", (e) => { if (e.key === "Enter") { RecentQueries.add(q.value); run(); q.blur(); } });
 }
+
+/* 예약 링크: 카탈로그는 새 탭으로 그대로 열고, 세션 코드만 복사 (검색창에 붙여넣기용) */
+document.addEventListener("click", (e) => {
+  const a = e.target.closest && e.target.closest("[data-reserve-code]");
+  if (!a) return;
+  const code = a.dataset.reserveCode;
+  const fail = () => toast(`세션 코드 ${code} — 카탈로그 검색창에 입력하세요`);
+  try { navigator.clipboard.writeText(code).then(() => toast(`${code} 코드를 복사했어요 — 카탈로그 검색창에 붙여넣으세요`), fail); }
+  catch (err) { fail(); }
+});
