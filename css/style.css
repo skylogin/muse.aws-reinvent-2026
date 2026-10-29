@@ -365,7 +365,7 @@ body.modal-open #toast { bottom: auto; top: calc(12px + env(safe-area-inset-top)
 .btn.ghost-on { background: var(--select-bg); color: var(--select-text); }
 
 /* 레이어 팝업 (시트 위에 겹침) */
-.overlay.layer { z-index: 130; padding: 16px; }
+.overlay.layer { z-index: 160; /* 드로어(150) 위 — 가이드 드로어에서 연 지도 크게 보기 */  padding: 16px; }
 .layer-card { border-radius: 18px !important; margin: 0 !important; max-height: 80vh; display: flex; flex-direction: column; padding: 0 !important; overflow: hidden; }
 .layer-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 10px 8px 18px; border-bottom: 1px solid var(--line); }
 .layer-head h2 { margin: 0 !important; font-size: 16px !important; }
@@ -866,3 +866,25 @@ html[data-size="expanded"] .split { grid-template-columns: minmax(360px, 2fr) 3f
 .reserve-btn { margin-top: 10px; }
 .reserve-btn .rs-code { display: block; font-size: 12px; font-weight: 500; opacity: .85; margin-top: 2px; }
 .reserve-hint { font-size: 12px; text-align: center; margin: 4px 0 0; }
+
+/* ---------- 패리스 호텔 기준 베뉴 지도 (가이드 → 베뉴·지도) ---------- */
+.vmap-card { margin: 4px 0 14px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.vmap-card h3 { margin-top: 4px; }
+.vmap-card .vmap { max-width: 460px; }
+.vmap { width: 100%; height: auto; display: block;
+  --vm-road: #dde3ec; --vm-blk: #eaf1fd; --vm-blk-line: #b9cdf2; --vm-home: #ffe6e2; --vm-home-line: #f3a69b; --vm-mono: #2f6fe0; }
+[data-theme="dark"] .vmap { --vm-road: #2b3a59; --vm-blk: #1f2f52; --vm-blk-line: #3a5288; --vm-home: #4a2730; --vm-home-line: #b4564e; --vm-mono: #6f9cff; }
+.vmap .vm-strip, .vmap .vm-road { fill: var(--vm-road); }
+.vmap .vm-strip-t, .vmap .vm-north { font-size: 10.5px; fill: var(--muted); font-weight: 700; }
+.vmap .vm-road-t { font-size: 10px; fill: var(--muted); font-weight: 700; }
+.vmap .vm-sub { font-weight: 400; }
+.vmap .vm-mono { stroke: var(--vm-mono); stroke-width: 3; stroke-dasharray: 6 5; fill: none; }
+.vmap .vm-mono-t, .vmap .vm-st-t { font-size: 10px; fill: var(--vm-mono); font-weight: 700; }
+.vmap .vm-st { fill: var(--sheet); stroke: var(--vm-mono); stroke-width: 2.5; }
+.vmap .vm-blk { fill: var(--vm-blk); stroke: var(--vm-blk-line); stroke-width: 1.2; }
+.vmap .vm-blk.vm-home { fill: var(--vm-home); stroke: var(--vm-home-line); stroke-width: 2; }
+.vmap .vm-name { font-size: 13px; font-weight: 800; fill: var(--text); }
+.vmap .vm-en, .vmap .vm-legend { font-size: 10px; fill: var(--muted); }
+.vmap .vm-time { font-size: 11px; font-weight: 600; fill: var(--text); }
+.vmap-zoom { overflow: auto; max-height: 70vh; -webkit-overflow-scrolling: touch; }
+.vmap-zoom .vmap { width: 680px; max-width: none; }

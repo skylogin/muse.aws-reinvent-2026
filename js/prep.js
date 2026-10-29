@@ -382,12 +382,45 @@ const RouteInfo = {
   taxiZone: { "MGM Grand": "Zone 1 · $21.25", "Caesars Palace": "Zone 2 · $25.25", "Wynn": "Zone 3 · $29.25" },
   venuesHTML() {
     const venues = (window.APP_DATA.event_info.venues || []);
-    return `<p class="muted" style="font-size:13px;">베뉴 6곳 — 탭하면 Google Maps가 열립니다.</p>` + venues.map((v) => `
+    return this.parisMapHTML() + `<p class="muted" style="font-size:13px;">베뉴 6곳 — 탭하면 Google Maps가 열립니다.</p>` + venues.map((v) => `
       <div class="kv"><span><strong>${esc(v.name)}</strong><br>
         <span class="muted" style="font-size:12px;">${esc(v.address || "")}${this.taxiZone[v.name] ? `<br>택시 ${esc(this.taxiZone[v.name])}` : ""}</span></span>
         <a class="btn ghost small map-btn" target="_blank" rel="noopener"
            href="https://www.google.com/maps/search/?api=1&query=${v.lat},${v.lng}">📍 지도</a>
       </div>`).join("") + this.walkTableHTML(venues);
+  },
+  /* 패리스 호텔 기준 베뉴 지도: 위치 관계만 나타낸 개략도. 시간은 앱 공식(Planner.travelBetween)에서 가져와 다른 화면과 같음 */
+  parisMapHTML() {
+    return `<div class="vmap-card"><h3>🏨 패리스 호텔 기준 베뉴 지도</h3>${this.parisMapSVG()}
+      <p class="muted" style="font-size:12px;margin:4px 0 0;">위치 관계만 나타낸 개략도예요. 시간은 앱의 다른 화면과 같은 기준(직선거리 + 도보는 건물 출입 10분, 차량은 승차장까지 15분)이라 넉넉하게 잡혀 있어요. 모노레일은 배지가 있으면 무료예요.</p>
+      <button class="btn ghost small" type="button" data-vmap-zoom style="margin-top:6px;">🔍 크게 보기</button></div>`;
+  },
+  parisMapSVG() {
+    const t = (v) => Planner.travelBetween({ venue: "Paris Las Vegas" }, { venue: v }) || {};
+    const walk = (tr) => `🚶 ${tr.walkMin}분`, both = (tr) => `${walk(tr)}${tr.mode !== "도보" ? ` · 🚕 ${tr.minutes}분` : ""}`;
+    const wy = t("Wynn"), ve = t("The Venetian"), fo = t("Caesars Forum"), cp = t("Caesars Palace"), mg = t("MGM Grand");
+    const road = (y, name, sub) => `<rect class="vm-road" x="8" y="${y - 6}" width="330" height="12" rx="2"/>
+      <text class="vm-road-t" x="14" y="${y + 3.5}">${name}${sub ? ` <tspan class="vm-sub">${sub}</tspan>` : ""}</text>`;
+    const block = (x, y, w, h, cls, ko, en, lines) => `<g>
+      <rect class="vm-blk${cls ? " " + cls : ""}" x="${x}" y="${y}" width="${w}" height="${h}" rx="8"/>
+      <text class="vm-name" x="${x + 8}" y="${y + 17}">${ko}</text><text class="vm-en" x="${x + 8}" y="${y + 30}">${en}</text>
+      ${lines.map((l, i) => `<text class="vm-time" x="${x + 8}" y="${y + 46 + i * 14}">${l}</text>`).join("")}</g>`;
+    const st = (y, name) => `<circle class="vm-st" cx="356" cy="${y}" r="6"/><text class="vm-st-t" x="366" y="${y + 4}">${name}</text>`;
+    return `<svg class="vmap" viewBox="0 0 420 614" role="img" aria-label="패리스 호텔 기준 베뉴 위치와 이동 시간">
+      <rect class="vm-strip" x="140" y="10" width="16" height="572" rx="3"/>
+      <text class="vm-strip-t" transform="translate(152 446) rotate(-90)">스트립 Las Vegas Blvd</text>
+      <text class="vm-north" x="16" y="24">▲ 북</text>
+      ${road(118, "Sands Ave", "· Spring Mountain Rd")}${road(322, "Flamingo Rd")}${road(452, "Harmon Ave")}${road(562, "Tropicana Ave")}
+      <path class="vm-mono" d="M356 205 L356 575"/><text class="vm-mono-t" x="364" y="210">🚝 모노레일</text>
+      ${st(230, "LINQ역")}${st(318, "플라밍고역")}${st(400, "패리스역")}${st(545, "MGM역")}
+      ${block(164, 20, 176, 86, "", "윈 · 앙코르", "Wynn · Encore", [both(wy), "멀어서 차량 추천"])}
+      ${block(164, 130, 176, 80, "", "베니션 · 팔라조", "The Venetian (메인 허브)", [both(ve)])}
+      ${block(164, 222, 176, 88, "", "시저스 포럼", "Caesars Forum", [both(fo), "🚝 2정거장 (LINQ역)"])}
+      ${block(10, 222, 124, 88, "", "시저스 팰리스", "Caesars Palace", [both(cp), "길 건너 대각선"])}
+      ${block(164, 340, 176, 98, "vm-home", "🏨 나의 숙소", "Paris Las Vegas", ["패리스역에서 모노레일", "(배지 있으면 무료)"])}
+      ${block(164, 466, 176, 86, "", "MGM 그랜드", "MGM Grand", [both(mg), "🚝 1정거장 (추천)"])}
+      <text class="vm-legend" x="10" y="604">🚶 도보 · 🚕 차량(택시·Uber) · 🚝 모노레일 (배지로 무료)</text>
+    </svg>`;
   },
   /* 베뉴 간 도보 거리 (가까운 순) */
   walkTableHTML(venues) {
@@ -416,3 +449,9 @@ const RouteInfo = {
       <p class="muted" style="font-size:13px;">다녀온 사람들 팁: 하루 일정은 <strong>베뉴 2곳(오전/오후)</strong>으로만 짜고, 이동에 1시간 여유를 두세요.</p>`;
   }
 };
+
+/* 지도 크게 보기: 넓게 펼쳐 옆으로 밀어 봄 (앱이 핀치 확대를 막고 있어서) */
+document.addEventListener("click", (e) => {
+  if (!e.target.closest || !e.target.closest("[data-vmap-zoom]")) return;
+  openLayer({ title: "🏨 패리스 호텔 기준 베뉴 지도", body: `<div class="vmap-zoom">${RouteInfo.parisMapSVG()}</div>` });
+});
