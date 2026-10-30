@@ -115,6 +115,10 @@ Views.expenses = function () {
       ${budgetMsg}
       <button class="btn ghost small" id="ex-budget" style="margin-top:6px;">${budget > 0 ? "예산 변경" : "예산 설정"}</button>
     </div>
+    <div class="card"><h3>📏 회사 정산 규정</h3>
+      ${S().expense_rule ? `<p class="rule-memo">${esc(S().expense_rule)}</p>` : `<p class="muted" style="font-size:13px;margin:0;">일비·영수증 요건·한도 같은 회사 규정을 적어 두면 지출을 넣을 때 바로 볼 수 있어요.</p>`}
+      <button class="btn ghost small" id="ex-rule" style="margin-top:6px;">${S().expense_rule ? "규정 수정" : "규정 적기"}</button>
+    </div>
     <div class="card">
       <div class="chip-row">
         ${[["all", "전체"], ["company", "회사"], ["personal", "개인"]].map(([v, l]) =>
@@ -163,6 +167,16 @@ Views.expenses = function () {
   $$("#view-expenses [data-exedit]").forEach((b) => b.onclick = () => Expenses.openForm(b.dataset.exedit));
   $$("#view-expenses [data-rcview]").forEach((b) => b.onclick = () => Receipts.view(b.dataset.rcview, b.dataset.rctitle));
   Receipts.paint(el);
+  $("#ex-rule").onclick = () => {
+    openSheet({
+      title: "📏 회사 정산 규정",
+      body: `<textarea id="rule-in" rows="7" maxlength="1500" placeholder="예:\n· 일비 $60 (식사 포함)\n· $25 이상은 영수증 필수\n· 택시는 업무 이동만, 사유 적기\n· 귀국 후 2주 안에 정산">${esc(S().expense_rule || "")}</textarea>
+        <p class="muted" style="font-size:12px;">이 메모는 정산 탭과 출장 보고서 작성 때 참고용이에요.</p>`,
+      actions: `<button class="btn ghost" id="rule-cancel">취소</button><button class="btn" id="rule-save">저장</button>`
+    });
+    $("#rule-cancel").onclick = () => $("#modal-overlay")._dismiss();
+    $("#rule-save").onclick = () => { S().expense_rule = $("#rule-in").value.trim(); Store.save(); closeModal(); Views.expenses(); toast("규정을 저장했어요"); };
+  };
   $("#ex-budget").onclick = () => {
     openModal(`
       <h2>예산 설정</h2>
@@ -202,7 +216,7 @@ const Expenses = {
     const v = cur || { date: today, owner: "company", category: "meal", desc: "", amount_usd: "", amount_krw: "", receipt: false };
     openSheet({
       title: cur ? "지출 수정" : "지출 추가",
-      body: `
+      body: `${S().expense_rule ? `<details class="rule-hint"><summary>📏 회사 정산 규정 보기</summary><p class="rule-memo">${esc(S().expense_rule)}</p></details>` : ""}
       <label class="field" for="ex-date">날짜</label><input type="date" id="ex-date" value="${esc(v.date)}">
       <label class="field">구분</label>
       <div class="seg" id="ex-owner">

@@ -890,3 +890,33 @@ html[data-size="expanded"] .split { grid-template-columns: minmax(360px, 2fr) 3f
 .vmap .vm-time { font-size: 11px; font-weight: 600; fill: var(--text); }
 .vmap-zoom { overflow: auto; max-height: 70vh; -webkit-overflow-scrolling: touch; }
 .vmap-zoom .vmap { width: 680px; max-width: none; }
+
+/* ---------- 콘텐츠 보강: 출처 줄 · 세션 고르는 법 · 비교표 · 예약 체크리스트 · 결과 보고서 · 정산 규정 ---------- */
+.src-line, li.src { font-size: 12px; color: var(--muted); }
+.src-line { margin: 14px 0 0; }
+li.src { list-style: none; margin-left: -18px; margin-top: 6px; }
+.cg-group { font-weight: 700; font-size: 13px; margin: 12px 0 2px; }
+.cg-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.cg-main { flex: 1; min-width: 0; font-size: 14px; }
+.cg-tip { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.cg-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.kv.app-cmp, .kv.meal-row { display: grid; grid-template-columns: minmax(0, 1.4fr) 1fr 1fr; gap: 8px; }
+.kv.app-cmp b, .kv.meal-row b { font-weight: 600; text-align: center; }
+.kv.app-cmp.head, .kv.meal-row.head { font-size: 12px; color: var(--muted); }
+.peer-chip.add.warn { color: var(--st-tight); }
+.rv-row { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.rv-row.done .rv-main b { color: var(--muted); }
+.rv-main { cursor: pointer; }
+.rv-main b { display: block; font-size: 14px; }
+.rv-main .muted { font-size: 12px; }
+.rv-seg { margin: 6px 0 4px; }
+.tr-preview { margin-top: 12px; }
+.tr-h { font-size: 15px; margin: 14px 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+.tr-li { font-size: 14px; padding: 2px 0 2px 12px; position: relative; white-space: pre-wrap; }
+.tr-li::before { content: "·"; position: absolute; left: 2px; color: var(--muted); }
+.tr-sub { margin: 8px 0; }
+.tr-sub > b { font-size: 14px; }
+.rule-memo { white-space: pre-wrap; font-size: 13.5px; margin: 0; }
+.rule-hint { margin: 0 0 8px; font-size: 13px; }
+.rule-hint summary { cursor: pointer; color: var(--link); }
+.sd-room .badge { margin-right: 2px; }

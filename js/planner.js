@@ -603,7 +603,7 @@ const Planner = {
     }
 
     // session
-    const n = S().session_notes[id] || { rating: 0, memo: "" };
+    const n = SessionNotes.get(id);
     const res = (S().reservations[id] || {}).status || "none";
     const kst = kstRange(it.date, it.start_time, it.end_time);
     const room = roomLabel(it);
@@ -644,7 +644,9 @@ const Planner = {
         <label class="field" style="display:block;margin-top:12px;">별점</label>
         <div class="stars" id="pi-stars">${[1, 2, 3, 4, 5].map((i) => `<span data-s="${i}" class="${i <= n.rating ? "on" : ""}">★</span>`).join("")}</div>
         <label class="field" for="pi-memo">메모</label>
-        <textarea id="pi-memo" rows="3" placeholder="배운 점, 후속 액션 등">${esc(n.memo)}</textarea>
+        <textarea id="pi-memo" rows="3" placeholder="배운 점">${esc(n.memo)}</textarea>
+        <label class="field" for="pi-apply">🏢 팀 적용점 <span class="muted">(출장 보고서에 들어가요)</span></label>
+        <textarea id="pi-apply" rows="2" placeholder="우리 팀에 적용할 점, 후속 액션">${esc(n.apply || "")}</textarea>
         ${walkUp}${repHTML}${altHTML}
         <div class="sheet-links">
           <button class="link-btn" id="pi-detail">세션 소개 전체 보기</button>
@@ -669,8 +671,8 @@ const Planner = {
       sp.addEventListener("click", setPi);
     });
     $("#pi-save").onclick = () => {
-      S().session_notes[id] = { rating, memo: $("#pi-memo").value.trim(), updated_at: new Date().toISOString() };
-      Store.save(); closeModal(); Views.planner(); toast("저장했어요");
+      SessionNotes.write(id, { rating, memo: $("#pi-memo").value, apply: $("#pi-apply").value });
+      closeModal(); Views.planner(); toast("저장했어요");
     };
     $("#pi-detail").onclick = () => { closeModal(); Sessions.openDetail(id); };
     Suggest.bind($(".bs-body"), { baseId: id, swap: true, onDone: () => Views.planner() });
@@ -793,6 +795,46 @@ const Planner = {
     $("#pl-more-close").onclick = () => $("#modal-overlay")._dismiss();
   },
 
+  /* 🎟️ 예약석 체크리스트: 담은 세션 중 예약석 대상만, 시간순 */
+  reserveItems() {
+    return S().favorites.map((id) => this.sessionById(id)).filter(needsReservation)
+      .sort((a, b) => (a.date + a.start_time > b.date + b.start_time ? 1 : -1));
+  },
+  reserveLeft() { return this.reserveItems().filter((s) => ((S().reservations[s.session_id] || {}).status || "none") !== "reserved").length; },
+  openReserveList() {
+    const body = () => {
+      const list = this.reserveItems(), left = this.reserveLeft();
+      const row = (s) => {
+        const res = (S().reservations[s.session_id] || {}).status || "none";
+        return `<div class="rv-row${res === "reserved" ? " done" : ""}">
+          <div class="rv-main" data-rv-open="${esc(s.session_id)}" role="button" tabindex="0"><b>${esc(s.title)}</b>
+            <span class="muted">${esc(dayLabel(s.date))} ${esc(s.start_time)} · ${esc(shortVenue(s.venue))} · ${esc(typeKo(s.session_type))}</span></div>
+          <div class="seg rv-seg">${["reserved", "waitlist", "none"].map((v) => `<button class="seg-btn res-${v}${res === v ? " on" : ""}" data-rv="${esc(s.session_id)}" data-v="${v}">${RES_LABEL[v]}</button>`).join("")}</div>
+          ${res !== "reserved" ? Sessions.reserveHTML(s, { label: `코드 ${s.code || s.session_id} 복사 · AWS Events에서 예약 ›` }) : ""}
+        </div>`;
+      };
+      return `<p style="margin:0 0 8px;"><b>${list.length ? `예약할 세션 ${list.length}개 중 ${list.length - left}개 예약됨` : "예약이 필요한 세션을 아직 담지 않았어요"}</b></p>
+        <div class="notice" style="margin:0 0 10px;font-size:13px;">
+          ⭐ 담기(관심)는 예약이 아니에요. AWS Events 앱이나 웹 카탈로그에서 따로 예약하세요.<br>
+          ⏰ 시작 <b>10분 전</b>까지 입장 스캔을 마쳐야 자리가 유지돼요.<br>
+          🔁 만석이면 같은 세션의 다른 회차(코드 끝 -R)를 찾거나 Walk-up 줄에 서세요. 같은 시간에 두 세션을 예약할 수는 없어요.
+        </div>
+        ${list.map(row).join("")}
+        <p class="muted" style="font-size:12px;">키노트·강의식 브레이크아웃·라이트닝 토크는 예약 없이 들어가요 (공식 FAQ). 예약 결과는 여기서 '예약됨'으로 표시해 두세요.</p>`;
+    };
+    openSheet({ title: "🎟️ 예약석 체크리스트", body: `<div id="rv-body">${body()}</div>`, actions: `<button class="btn" id="rv-close">닫기</button>` });
+    const bind = () => {
+      $$("#rv-body [data-rv]").forEach((b) => b.onclick = () => {
+        S().reservations[b.dataset.rv] = { status: b.dataset.v, updated_at: new Date().toISOString() };
+        Store.save();
+        $("#rv-body").innerHTML = body(); bind();
+      });
+      $$("#rv-body [data-rv-open]").forEach((el) => el.onclick = () => { closeModal(); Sessions.openDetail(el.dataset.rvOpen); });
+    };
+    bind();
+    $("#rv-close").onclick = () => { $("#modal-overlay")._dismiss(); if (currentTab === "planner") Views.planner(); else if (currentTab === "home") Views.home(); };
+  },
+
   toggleFixed(id) {
     const off = S().fixed_off;
     const i = off.indexOf(id);
@@ -904,6 +946,7 @@ Views.planner = function () {
       ${Share.peers().map((p) => `<button class="peer-chip${p.visible !== false ? " on" : ""}" data-peer="${p.id}" aria-pressed="${p.visible !== false}">${Share.dotHTML(p)}${esc(p.name)}</button>`).join("")}
       <button class="peer-chip add" id="pl-share">👥 ${Share.peers().length ? "공유·받기" : "동료와 일정 공유"}</button>
       ${Share.peers().length ? `<button class="peer-chip add" id="pl-peers">관리</button>` : ""}
+      ${Planner.reserveItems().length ? `<button class="peer-chip add${Planner.reserveLeft() ? " warn" : ""}" id="pl-reserve">🎟️ 예약 ${Planner.reserveItems().length - Planner.reserveLeft()}/${Planner.reserveItems().length}</button>` : ""}
       <button class="peer-chip add" id="pl-more" aria-label="더보기: 고정 이벤트·한국 업무시간·ICS·보고서">⋯ 더보기</button>
     </div>
     ${(() => {
@@ -934,6 +977,8 @@ Views.planner = function () {
   if (goS) goS.onclick = () => switchTab("sessions");
   $("#ri-guide").onclick = () => { Guide.next = "local"; switchTab("guide"); };
   $("#pl-more").onclick = () => Planner.openMore();
+  const rv = $("#pl-reserve");
+  if (rv) rv.onclick = () => Planner.openReserveList();
   $$("#view-planner [data-pitem]").forEach((it) => {
     const open = () => { const id = it.dataset.pitem; if (id) Planner.openItem(id, plannerDay); };
     it.addEventListener("click", open);

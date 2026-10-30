@@ -96,6 +96,12 @@ test("merge: disjoint additions are both kept", () => {
   eq(summary.rows.expenses.add, 1, "rows.expenses.add");
   eq(summary.total, 1, "total");
 });
+test("merge: people met on each device are merged person by person", () => {
+  const A = device({ people: [] }).edit((s) => s.people.push({ id: "pp1", name: "Jane" }), 100);
+  const B = device({ people: [] }).edit((s) => s.people.push({ id: "pp2", name: "Kim" }), 200);
+  const { state } = Sync.merge(A.s, snap(B.s), { cfg: CFG });
+  eq(state.people.map((p) => p.id), ["pp1", "pp2"], "both people kept");
+});
 test("merge: later edit wins and counts overwritten", () => {
   const A = device().edit((s) => s.expenses.push(ex("ex1", 10)), 100).edit((s) => { s.expenses[0].amount_usd = 25; }, 300);
   const B = device().edit((s) => s.expenses.push(ex("ex1", 10)), 100).edit((s) => { s.expenses[0].amount_usd = 30; }, 400);

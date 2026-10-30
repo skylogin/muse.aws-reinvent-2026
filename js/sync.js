@@ -100,7 +100,7 @@ const Sync = (() => {
   const KINDS = {
     favorites: set, fixed_off: set,
     reservations: map, backups: map, session_notes: map, depart_done: map, fixed_edits: map,
-    expenses: idList, peers: idList, news: idList, expo_booths: idList,
+    expenses: idList, peers: idList, news: idList, expo_booths: idList, people: idList,
     checklist, daily_plan: dailyPlan, trip: fields, profile: shallow
   };
 

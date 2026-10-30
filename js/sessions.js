@@ -3,6 +3,9 @@
 
 const SESSION_PAGE = 100; // 한 번에 그리는 카드 수 ('더 보기'로 늘림)
 const RES_LABEL = { reserved: "예약됨", waitlist: "대기", none: "미예약" };
+/* 예약석 대상인지 (공식 FAQ: 키노트·강의식 브레이크아웃은 예약 없이 입장. 행사 서비스·체험·Expo도 예약석이 아님) */
+const NO_RESERVATION_TYPES = new Set(["keynote", "mainstage", "breakout", "lightning-talk", "expo", "event-service", "featured-experience"]);
+const needsReservation = (s) => !!s && !NO_RESERVATION_TYPES.has(s.session_type);
 const SORT_LABEL = { time: "시간순", recommended: "추천순", level: "레벨순" };
 
 /* 세션 타입·난이도·형식 한국어 표기 */
@@ -21,7 +24,7 @@ const TYPE_TIP = {
   "lightning-talk": "⚡ 짧은 발표",
   "exam-prep": "📝 AWS 자격증 시험 대비"
 };
-const LEVEL_KO = { 100: "입문", 200: "중급", 300: "고급", 400: "전문가" };
+const LEVEL_KO = { 100: "입문", 200: "중급", 300: "고급", 400: "전문가", 500: "최고 전문가" };
 const FORMAT_KO = { lecture: "강의", "hands-on": "실습", discussion: "토론", lab: "랩" };
 const LANG_KO = { en: "영어", ko: "한국어", ja: "일본어", zh: "중국어", es: "스페인어", fr: "프랑스어", de: "독일어", pt: "포르투갈어" };
 const typeKo = (t) => TYPE_KO[t] || t || "";
@@ -56,6 +59,11 @@ function serviceList() {
 }
 
 /* "MGM Grand | Level 1 | Grand 122" → "Level 1 · Grand 122" (베뉴명 중복 제거) */
+/* "Level 2 · Ballroom E" → "2층" (층을 먼저 찾게) */
+function floorKo(room) {
+  const m = String(room || "").match(/\bLevel (\d+)\b/i);
+  return m ? `${m[1]}층` : "";
+}
 function roomLabel(s) {
   if (!s || !s.room) return "";
   const parts = String(s.room).split("|").map((x) => x.trim()).filter(Boolean);
@@ -298,7 +306,7 @@ const Sessions = {
         <h3 class="bs-title sd-title">${esc(s.title)}</h3>
         <div class="sd-facts">
           <div class="sd-fact"><span class="k">🗓️ ${s.date ? esc(dayLabel(s.date)) : "일시"}</span><b>${s.start_time ? esc(s.start_time) + (s.end_time ? "–" + esc(s.end_time) : "") : "미정"}</b>${kst ? `<small>🇰🇷 한국 ${kst}</small>` : ""}</div>
-          <div class="sd-fact"><span class="k">📍 장소</span><b>${esc(s.venue || "미정")}</b>${room ? `<small>${esc(room)}</small>` : ""}</div>
+          <div class="sd-fact"><span class="k">📍 장소</span><b>${esc(s.venue || "미정")}</b>${room ? `<small class="sd-room">${floorKo(room) ? `<span class="badge info">${esc(floorKo(room))}</span> ` : ""}${esc(room)}</small>` : ""}</div>
           <div class="sd-fact"><span class="k">🎯 형식</span><b>${esc([typeKo(s.session_type), fmt].filter(Boolean).join(" · "))}</b>${lvl ? `<small>${esc(lvl)}</small>` : ""}</div>
           <div class="sd-fact"><span class="k">⏱️ 길이</span><b>${esc(len || "—")}</b>${lang ? `<small>${esc(lang)}</small>` : ""}</div>
         </div>
@@ -316,7 +324,9 @@ const Sessions = {
         <div id="d-reps">${reps.map((c) => Suggest.repeatRowHTML(c)).join("")}</div>` : ""}
         <h3 class="sg-head">📝 내 노트</h3>
         <div class="stars" id="d-stars">${[1, 2, 3, 4, 5].map((i) => `<span data-s="${i}">★</span>`).join("")}</div>
-        <textarea id="d-memo" rows="3" placeholder="배운 점, 후속 액션 등"></textarea>
+        <textarea id="d-memo" rows="3" placeholder="배운 점" aria-label="배운 점"></textarea>
+        <label class="field" for="d-apply">🏢 팀 적용점 <span class="muted">(출장 보고서에 들어가요)</span></label>
+        <textarea id="d-apply" rows="2" placeholder="우리 팀에 적용할 점, 후속 액션"></textarea>
         <div class="sheet-links" style="margin-top:12px;">
           ${this.reserveHTML(s, { label: "AWS Events에서 예약 ›" })}
         </div>`;
@@ -365,16 +375,13 @@ const Sessions = {
       this.toggleFav(id);
       paint();
     };
-    // 내 노트 (별점+메모) — planner와 같은 session_notes 저장소
-    const sn = S().session_notes[id] || { rating: 0, memo: "" };
+    // 내 노트 (별점·메모·팀 적용점) — 내 일정 시트와 같은 저장 함수 (SessionNotes.write)
+    const sn = SessionNotes.get(id);
     let rating = sn.rating || 0, t = null;
-    const memoEl = q("#d-memo");
+    const memoEl = q("#d-memo"), applyEl = q("#d-apply");
     const save = () => {
       clearTimeout(t);
-      const memo = memoEl.value.trim();
-      if (rating || memo) S().session_notes[id] = { rating, memo, updated_at: new Date().toISOString() };
-      else delete S().session_notes[id];
-      Store.save();
+      SessionNotes.write(id, { rating, memo: memoEl.value, apply: applyEl.value });
     };
     const paintStars = () => $$("#d-stars span", root).forEach((x) => x.classList.toggle("on", Number(x.dataset.s) <= rating));
     paintStars();
@@ -382,8 +389,11 @@ const Sessions = {
       e.preventDefault(); rating = Number(sp.dataset.s) === rating ? 0 : Number(sp.dataset.s); paintStars(); save();
     }));
     memoEl.value = sn.memo || "";
-    memoEl.addEventListener("input", () => { clearTimeout(t); t = setTimeout(save, 400); });
-    memoEl.addEventListener("change", save);
+    applyEl.value = sn.apply || "";
+    [memoEl, applyEl].forEach((el) => {
+      el.addEventListener("input", () => { clearTimeout(t); t = setTimeout(save, 400); });
+      el.addEventListener("change", save);
+    });
     this.bindSummary(root);
     $$("#d-topics [data-topic], #d-topics [data-service]", root).forEach((c) => c.onclick = () => {
       const key = c.dataset.topic ? "topic" : "service", v = c.dataset.topic || c.dataset.service;

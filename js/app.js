@@ -185,7 +185,7 @@ function defaultState() {
     reservations: {},       // session_id -> {status, updated_at}
     backups: {},             // session_id -> [session_id]
     daily_plan: {},          // "YYYY-MM-DD" -> [{session_id, note}]
-    session_notes: {},       // session_id -> {rating, memo, updated_at}
+    session_notes: {},       // session_id -> {rating, memo, apply, updated_at} (apply: 팀 적용점)
     trip: {
       flights: {
         outbound: { airline: "", flight_no: "", dep_time: "", arr_time: "", terminal: "" },
@@ -210,6 +210,9 @@ function defaultState() {
     show_kr_hours: true, // 시간표에 한국 업무시간 표시
     news: [],           // 신규 발표 메모 [{id, title, q, at}]
     expo_booths: [],    // Expo 부스 스탬프 [{id, name, note, visited, visited_at}]
+    people: [],         // 만난 사람 [{id, name, company, role, topic, follow_up, follow_done, contact, met_at}]
+    trip_report: { summary: "", actions: "", include_people: false }, // 출장 결과 보고서의 직접 쓰는 칸
+    expense_rule: "",   // 회사 정산 규정 메모 (정산 탭에 표시)
     last_backup_at: null, // 마지막 백업 시각 (파일 저장·코드 복사·공유)
     sync: { stamps: {}, tombs: {} }, // 다른 기기와 합칠 때 쓰는 항목별 수정·삭제 시각 (js/sync.js)
     sync_local: { last_sent_at: null, last_received_at: null, last_received_exported_at: null, last_from: "" } // 이 기기의 보냄·받음 기록
@@ -837,8 +840,9 @@ const HomeActions = {
   sos: ["🆘", "응급", () => openDrawer("🆘 응급·안전", LocalGuide.emergencyHTML())],
   csv: ["🧾", "정산 내보내기", () => { switchTab("expenses"); Expenses.openExport(); }],
   "notes-txt": ["📝", "노트 내보내기", () => SessionNotes.exportTxt()],
+  report: ["📑", "결과 보고서", () => TripReport.open()],
   backup: ["💾", "백업", () => TransferUI.exportFile()],
-  BY_PHASE: { before: ["pack", "trip", "rec", "notes"], during: ["receipt", "tip", "notes", "expo", "sos"], after: ["csv", "notes-txt", "backup"] },
+  BY_PHASE: { before: ["pack", "trip", "rec", "notes"], during: ["receipt", "tip", "notes", "expo", "sos"], after: ["report", "csv", "notes-txt", "backup"] },
   rowHTML(ph) {
     return `<div class="qa-row span-2">${this.BY_PHASE[ph].map((k) => {
       const [ico, label] = this[k];
@@ -863,14 +867,15 @@ Views.home = function () {
   if (!f.outbound.flight_no) tripTodos.push("가는 편 항공편 미정");
   if (!f.inbound.flight_no) tripTodos.push("오는 편 항공편 미정");
   if (!st.trip.hotel.name) tripTodos.push("호텔 미정");
-  const unres = st.favorites.filter((id) => !(st.reservations[id] && st.reservations[id].status === "reserved"));
   const todos = [];
   const bAt = st.last_backup_at, bDays = bAt ? Math.floor((Date.now() - bAt) / 86400000) : null;
   if ((bAt == null && (st.favorites.length || st.expenses.length)) || bDays >= 3) {
     todos.push({ text: bAt == null ? "💾 아직 백업하지 않았어요" : `💾 백업한 지 ${bDays}일 지났어요`, act: () => { TransferUI.exportFile(); Views.home(); } });
   }
   if (ph !== "after") tripTodos.forEach((t) => todos.push({ text: t, tab: "guide" }));
-  if (ph !== "after" && unres.length) todos.push({ text: `예약 안 된 관심 세션 ${unres.length}개`, tab: "sessions" });
+  const unres = ph !== "after" ? Planner.reserveLeft() : 0; // 예약석 대상인 담은 세션만 (키노트·강의식 브레이크아웃 제외)
+  if (unres) todos.push({ text: `🎟️ 예약 안 된 세션 ${unres}개`, act: () => Planner.openReserveList() });
+  if (f.outbound.dep_time && dd >= 1 && dd <= 4) todos.push({ text: "🌙 시차 적응 시작 (출발 3일 전부터)", act: () => { Guide.next = "prep"; switchTab("guide"); Guide.open("jetlag"); } });
   const cl = Packing.list();
   const clDone = cl.filter((x) => x.done).length;
   if (ph === "before" && clDone < cl.length) todos.push({ text: `준비물 ${clDone}/${cl.length} 완료`, tab: "guide", seg: "prep" });
@@ -968,13 +973,29 @@ Views.home = function () {
       <div class="kv"><span>세션 노트</span><b>${notes}개</b></div>
       <div class="kv"><span>🏢 회사 지출</span><b>$${fmt(sum("company"))}</b></div>
       <div class="kv"><span>👤 개인 지출</span><b>$${fmt(sum("personal"))}</b></div>
-      <button class="btn ghost block small" id="home-recap-notes">📝 노트 열기</button>
+      <div class="row" style="margin-top:6px;">
+        <button class="btn block small" id="home-recap-report">📑 결과 보고서</button>
+        <button class="btn ghost block small" id="home-recap-notes">📝 노트 열기</button>
+      </div>
+    </div>`;
+  })();
+
+  /* re:Play 당일: 시간·셔틀·준비물·다음 날(귀국일) 연결 */
+  const replayCard = (() => {
+    const rp = (window.APP_DATA.event_info || {}).replay || {}, sh = (window.APP_DATA.event_info || {}).shuttle || {};
+    if (!rp.date || today !== rp.date || nowHM >= "23:00") return "";
+    return `<div class="card" id="home-replay"><h3>🎉 오늘 밤 re:Play</h3>
+      <div class="kv"><span>시간·장소</span><b>${esc(rp.time || "")} · ${esc(rp.venue || "")}</b></div>
+      ${sh.replay_shuttle ? `<div class="kv"><span>🚌 전용 셔틀</span><b>${esc(sh.replay_shuttle.replace(/\s*\(.*\)\s*$/, ""))}</b></div>` : ""}
+      <p style="font-size:13px;margin:8px 0 4px;">🎒 배지 · 따뜻한 겉옷(야외, 밤 6℃ 안팎) · 귀마개 · 보조배터리</p>
+      <p class="muted" style="font-size:12px;margin:0;">배지만 있으면 입장해요 (게스트는 별도 $350 패스). 내일은 금요일 반나절 일정이에요 — 체크아웃·공항 시간을 미리 확인하세요.</p>
+      <button class="btn ghost block small" id="home-replay-return" style="margin-top:8px;">✈️ 귀국 준비 보기</button>
     </div>`;
   })();
 
   const qa = HomeActions.rowHTML(ph);
   const notice = pending ? `<div class="notice span-2">📡 세션 카탈로그 수집 대기 중 — 공식 카탈로그에서 수집하면 세션 탭이 활성화됩니다.</div>` : "";
-  const order = ph === "during" ? [hero, notice, upcoming, qa, todoCard, recCard, keynoteCard, newsCard, Expo.cardHTML()]
+  const order = ph === "during" ? [hero, notice, upcoming, replayCard, qa, todoCard, recCard, keynoteCard, newsCard, Expo.cardHTML()]
     : ph === "after" ? [hero, recapCard, qa, todoCard]
     : [hero, notice, qa, upcoming, todoCard, recCard, keynoteCard, newsCard, Expo.cardHTML()];
   const el = $("#view-home");
@@ -989,6 +1010,10 @@ Views.home = function () {
   });
   const rn = $("#home-recap-notes");
   if (rn) rn.onclick = () => Notes.open();
+  const rr = $("#home-recap-report");
+  if (rr) rr.onclick = () => TripReport.open();
+  const rpr = $("#home-replay-return");
+  if (rpr) rpr.onclick = () => { Guide.next = "return"; switchTab("guide"); };
   Planner.bindUpcoming();
   Expo.bindCard();
   const hn = $("#home-news");
