@@ -316,6 +316,8 @@ label.field { font-size: 13px; font-weight: 600; color: var(--muted); }
   background: var(--navy); color: #fff; font-size: 14px; box-shadow: 0 4px 14px rgba(0,0,0,.25);
   max-width: calc(100% - 32px); width: max-content; }
 #undo-bar .btn { margin: 0; border-radius: 999px; }
+/* 둘이 함께 뜨면 나중에 뜬 것을 한 줄 아래로 (같은 자리에 겹치지 않게) */
+#update-bar ~ #undo-bar, #undo-bar ~ #update-bar { top: calc(122px + env(safe-area-inset-top)); }
 #toast { position: fixed; left: 50%; bottom: calc(78px + env(safe-area-inset-bottom)); transform: translateX(-50%);
   background: var(--navy); color: #fff; padding: 10px 18px; border-radius: 999px;
   font-size: 14px; z-index: 400; box-shadow: 0 4px 14px rgba(0,0,0,.25);
@@ -772,7 +774,7 @@ html[data-size="expanded"] #tabbar { grid-area: rail; flex-direction: column; ju
   padding: calc(12px + env(safe-area-inset-top)) 0 env(safe-area-inset-bottom) env(safe-area-inset-left);
   border-top: 0; border-right: 1px solid var(--line); }
 html[data-size="expanded"] #tabbar button { flex: 0 0 auto; min-height: 64px; }
-html[data-size="expanded"] #toast { bottom: calc(24px + env(safe-area-inset-bottom)); }
+html[data-size="expanded"] body:not(.modal-open) #toast { bottom: calc(24px + env(safe-area-inset-bottom)); } /* 시트가 열리면 위로 (아래 위치까지 걸리면 세로로 늘어남) */
 html[data-size="expanded"] .fab { bottom: calc(24px + env(safe-area-inset-bottom)); }
 html[data-size="expanded"] .view.has-fab { padding-bottom: 36px; }
 /* 넓고 낮은 화면(iPhone Duo 펼침 등): 헤더를 한 줄로 */
