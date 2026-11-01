@@ -91,7 +91,7 @@ S.forEach((s) => {
   // 행사 기간: 앱의 DAYS(11/29 배지 수령·킥오프일 ~ 12/5 귀국일)와 맞춤. event_info의 11/30~12/4는 본행사 기간이라 11/29 사전 활동이 걸림
   else if (s.date < "2026-11-29" || s.date > "2026-12-05") note("행사 기간 밖 날짜", id);
   if (!timeRe.test(s.start_time || "") || !timeRe.test(s.end_time || "")) note("시간 형식(HH:MM) 아님", id);
-  else if (s.end_time <= s.start_time) note("끝나는 시간이 시작보다 빠름", id);
+  else if (s.end_time < s.start_time) note("끝나는 시간이 시작보다 빠름", id); // 시작=종료는 시점형 활동(ACT 등 카탈로그 원본)이라 허용
   if (!s.venue) { if (s.room) roomOnly++; else note("베뉴·장소 없음", id); } // 여러 장소·베뉴 밖 장소는 room에만 있음
   else if (!venueNames[aliases[s.venue] || s.venue]) note(`좌표 없는 베뉴 '${s.venue}'`, id);
 });
