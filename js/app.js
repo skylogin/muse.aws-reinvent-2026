@@ -227,9 +227,7 @@ const Store = {
   load() {
     try { this.state = JSON.parse(localStorage.getItem(LS_KEY)); } catch (e) { this.state = null; }
     if (!this.state || typeof this.state !== "object") this.state = defaultState();
-    // forward-fill new keys
-    const d = defaultState();
-    for (const k of Object.keys(d)) if (!(k in this.state)) this.state[k] = d[k];
+    this.fill(this.state);
     this.prev = Sync.units(this.state, SYNC_CFG);
     return this.state;
   },
@@ -239,8 +237,14 @@ const Store = {
     this.prev = cur;
     try { localStorage.setItem(LS_KEY, JSON.stringify(this.state)); } catch (e) { toast("저장 공간이 부족합니다"); }
   },
+  /* 새로 생긴 키를 기본값으로 채움 (예전 버전이 저장했거나 보낸 상태) */
+  fill(state) {
+    const d = defaultState();
+    for (const k of Object.keys(d)) if (!(k in state)) state[k] = d[k];
+    return state;
+  },
   /* 합치기·덮어쓰기·되돌리기: 상태를 통째로 바꾸되 가져온 항목에 '방금 수정'을 찍지 않음 */
-  replace(state) { this.state = state; this.prev = Sync.units(state, SYNC_CFG); this.save(); },
+  replace(state) { this.state = this.fill(state); this.prev = Sync.units(state, SYNC_CFG); this.save(); },
   reset() { this.replace(defaultState()); }
 };
 const S = () => Store.state;

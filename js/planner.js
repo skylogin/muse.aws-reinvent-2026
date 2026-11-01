@@ -823,16 +823,18 @@ const Planner = {
         <p class="muted" style="font-size:12px;">키노트·강의식 브레이크아웃·라이트닝 토크는 예약 없이 들어가요 (공식 FAQ). 예약 결과는 여기서 '예약됨'으로 표시해 두세요.</p>`;
     };
     openSheet({ title: "🎟️ 예약석 체크리스트", body: `<div id="rv-body">${body()}</div>`, actions: `<button class="btn" id="rv-close">닫기</button>` });
+    const behind = () => { if (currentTab === "planner") Views.planner(); else if (currentTab === "home") Views.home(); }; // 예약 칩·할 일 개수
     const bind = () => {
       $$("#rv-body [data-rv]").forEach((b) => b.onclick = () => {
         S().reservations[b.dataset.rv] = { status: b.dataset.v, updated_at: new Date().toISOString() };
         Store.save();
         $("#rv-body").innerHTML = body(); bind();
+        behind(); // 바깥 탭·아래로 밀기·뒤로가기로 닫아도 맞게
       });
       $$("#rv-body [data-rv-open]").forEach((el) => el.onclick = () => { closeModal(); Sessions.openDetail(el.dataset.rvOpen); });
     };
     bind();
-    $("#rv-close").onclick = () => { $("#modal-overlay")._dismiss(); if (currentTab === "planner") Views.planner(); else if (currentTab === "home") Views.home(); };
+    $("#rv-close").onclick = () => $("#modal-overlay")._dismiss();
   },
 
   toggleFixed(id) {
