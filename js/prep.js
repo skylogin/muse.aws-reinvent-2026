@@ -483,7 +483,7 @@ Views.guide = function () {
   const el = $("#view-guide");
   const seg = Guide.resolve();
   const t = S().trip;
-  const f = t.flights, h = t.hotel;
+  const h = t.hotel;
   const missing = (v) => !v ? `<span class="badge warn">미정</span>` : esc(v);
   const cl = Packing.list();
   const done = cl.filter((x) => x.done).length;
@@ -492,16 +492,11 @@ Views.guide = function () {
   const dDone = S().depart_done || {};
   const dtDoneCount = dtasks.filter((x) => dDone[x.id]).length;
 
-  const inboundRows = `
-      <h4 style="margin:8px 0 4px;font-size:14px;">오는 편 (LAS → ICN) ${missing(f.inbound.flight_no)}</h4>
-      <div class="kv"><span>편명</span><b>${esc(f.inbound.flight_no) || "-"}</b></div>
-      <div class="kv"><span>출발 → 도착</span><b>${f.inbound.dep_time ? esc(f.inbound.dep_time) + " → " + esc(f.inbound.arr_time) : "-"}</b></div>`;
+  const inboundRows = Flights.cardHTML("inbound");
 
   const tripCard = `
     <div class="card"><h3>✈️ 내 출장 정보</h3>
-      <h4 style="margin:8px 0 4px;font-size:14px;">가는 편 (ICN → LAS) ${missing(f.outbound.flight_no)}</h4>
-      <div class="kv"><span>편명</span><b>${esc(f.outbound.flight_no) || "-"}</b></div>
-      <div class="kv"><span>출발 → 도착</span><b>${f.outbound.dep_time ? esc(f.outbound.dep_time) + " → " + esc(f.outbound.arr_time) : "-"}</b></div>
+      ${Flights.cardHTML("outbound")}
       ${inboundRows}
       <h4 style="margin:8px 0 4px;font-size:14px;">호텔 ${missing(h.name)}</h4>
       <div class="kv"><span>호텔명</span><b>${esc(h.name) || "-"}</b></div>
@@ -584,22 +579,126 @@ Views.guide = function () {
 /* 탭을 떠나면 다음 방문 때 날짜 기준 세그먼트로 */
 Views.guide.onLeave = () => { Guide.seg = null; };
 
+/* ✈️ 비행편: 방향(가는 편·오는 편)마다 구간 목록 legs. 예전 칸(편명·출발·도착)도 첫 출발·마지막 도착으로 채워 둠
+   — 홈 '항공편 미정'·시차 적응 계획, 아직 업데이트하지 않은 기기가 그대로 읽게 */
+const Flights = {
+  ENDS: { outbound: ["ICN", "LAS"], inbound: ["LAS", "ICN"] },
+  TITLE: { outbound: "가는 편", inbound: "오는 편" },
+  /* "2026-11-29T19:00"·"2026-11-29 19:00" → "2026-11-29 19:00". 형식이 다르면 null */
+  norm(v) { const m = String(v || "").match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/); return m ? `${m[1]} ${m[2]}` : null; },
+  show(v) { return this.norm(v) || v || "-"; },
+  /* 구간 목록 (예전 데이터는 구간 1개로) */
+  legs(dir) {
+    const d = S().trip.flights[dir] || {};
+    if (Array.isArray(d.legs) && d.legs.length) return d.legs;
+    const [from, to] = this.ENDS[dir];
+    return [{ from, to, airline: d.airline || "", flight_no: d.flight_no || "", dep_time: d.dep_time || "", arr_time: d.arr_time || "" }];
+  },
+  save(dir, legs) {
+    const join = (k) => [...new Set(legs.map((l) => l[k]).filter(Boolean))].join(" · ");
+    S().trip.flights[dir] = { airline: join("airline"), flight_no: join("flight_no"), dep_time: legs[0].dep_time,
+      arr_time: legs[legs.length - 1].arr_time, terminal: "", legs };
+  },
+  route(legs) { return [legs[0].from].concat(legs.map((l) => l.to)).map((x) => x || "?").join(" → "); },
+  /* 경유 대기: 같은 공항의 도착 → 다음 출발이라 둘 다 그 공항 시각 (시간대 계산 필요 없음) */
+  gapHTML(prev, next) {
+    const a = PrepGuide.utc(prev.arr_time, 0), b = PrepGuide.utc(next.dep_time, 0);
+    if (a == null || b == null) return `<div class="leg-gap"></div>`;
+    const m = (b - a) / 60000;
+    return m < 0 ? `<div class="leg-gap bad">⚠️ 다음 출발이 앞 구간 도착보다 빨라요 — 시각을 확인하세요</div>`
+      : `<div class="leg-gap">⏱ ${esc(prev.to || next.from || "")} 경유 ${Planner.dur(m)}</div>`;
+  },
+  /* 가이드 카드: 경로 머리글 + 구간 줄 + 경유 대기 */
+  cardHTML(dir) {
+    const legs = this.legs(dir), stops = legs.length - 1;
+    const end = (code, v) => `<span class="nw">${esc(code || "?")}${v ? " " + esc(this.show(v)) : ""}</span>`; // 공항+시각은 한 덩어리로 (화살표에서만 줄바꿈)
+    return `<h4 style="margin:8px 0 4px;font-size:14px;">${this.TITLE[dir]} (${esc(this.route(legs))})${stops ? ` <span class="badge info">경유 ${stops}회</span>` : ""}${legs.some((l) => l.flight_no) ? "" : ` <span class="badge warn">미정</span>`}</h4>
+      ${legs.map((l, i) => `${i ? this.gapHTML(legs[i - 1], l) : ""}<div class="leg-line"><b>${esc(l.flight_no) || "편명 미정"}</b>${l.airline ? ` <span class="muted">${esc(l.airline)}</span>` : ""}
+        <div class="leg-times">${end(l.from, l.dep_time)} → ${end(l.to, l.arr_time)}</div></div>`).join("")}`;
+  },
+  /* 날짜·시간 칸: 기기 선택기로 고르고, 칸에는 항상 YYYY-MM-DD HH:MM */
+  pickHTML(cls, v) {
+    const n = this.norm(v);
+    return `<div class="dt-field ${cls}-wrap"><label class="dt-pick"><span class="dt-text${n ? "" : " empty"}">${n || "날짜·시간 선택"}</span>
+      <input type="datetime-local" class="${cls}" aria-label="${cls === "lg-dep" ? "출발 일시" : "도착 일시"}" value="${n ? n.replace(" ", "T") : ""}" data-orig="${esc(v || "")}"></label>
+      ${!n && v ? `<span class="dt-old muted">기존 입력: ${esc(v)}</span>` : ""}</div>`;
+  },
+  legHTML(dir, l, i, n) {
+    const inp = (cls, val, ph, extra) => `<input type="text" class="${cls}" value="${esc(val || "")}" placeholder="${ph}"${extra || ""}>`;
+    const code = ' maxlength="4" autocapitalize="characters" autocomplete="off"';
+    return `<div class="leg-card" data-dir="${dir}" data-i="${i}">
+      <div class="leg-head"><b>구간 ${i + 1}</b>${n > 1 ? `<button class="link-btn" type="button" data-leg-del="${i}">삭제</button>` : ""}</div>
+      <div class="row"><div><label class="field">출발 공항</label>${inp("lg-from", l.from, "ICN", code)}</div>
+        <div><label class="field">도착 공항</label>${inp("lg-to", l.to, "LAS", code)}</div></div>
+      <div class="row"><div><label class="field">항공사</label>${inp("lg-al", l.airline, "예: 대한항공")}</div>
+        <div><label class="field">편명</label>${inp("lg-no", l.flight_no, "예: KE005")}</div></div>
+      <div class="row dt-row"><div><label class="field">출발 <span class="muted">(출발지 시각)</span></label>${this.pickHTML("lg-dep", l.dep_time)}</div>
+        <div><label class="field">도착 <span class="muted">(도착지 시각)</span></label>${this.pickHTML("lg-arr", l.arr_time)}</div></div>
+    </div>`;
+  },
+  /* 입력 화면의 한 방향: 구간 카드 사이에 경유 대기, 끝에 [＋ 경유 구간 추가] */
+  formHTML(dir, legs) {
+    return legs.map((l, i) => (i ? this.gapHTML(legs[i - 1], l) : "") + this.legHTML(dir, l, i, legs.length)).join("")
+      + `<button class="btn ghost small block" type="button" data-leg-add="${dir}">＋ 경유 구간 추가</button>`;
+  },
+  /* 화면 값 → 구간 목록. 고르지 않은 시각 칸은 원래 값(예전 형식 포함)을 유지 */
+  read(box) {
+    return $$(".leg-card", box).map((c) => {
+      const v = (cls) => $("." + cls, c).value.trim();
+      const t = (cls) => { const el = $("." + cls, c); return el.value ? this.norm(el.value) : el.dataset.touched ? "" : el.dataset.orig; };
+      return { from: v("lg-from").toUpperCase(), to: v("lg-to").toUpperCase(), airline: v("lg-al"), flight_no: v("lg-no"), dep_time: t("lg-dep"), arr_time: t("lg-arr") };
+    });
+  },
+  /* 입력 화면 한 방향 그리기·묶기 (구간 추가·삭제 때 다시 그림) */
+  mount(box, dir, legs) {
+    box.innerHTML = this.formHTML(dir, legs);
+    const regap = () => {
+      const cur = this.read(box);
+      $$(".leg-gap", box).forEach((g, i) => { g.outerHTML = this.gapHTML(cur[i], cur[i + 1]); });
+    };
+    $$('input[type="datetime-local"]', box).forEach((el) => {
+      const paint = () => {
+        el.dataset.touched = "1";
+        const n = this.norm(el.value), tx = el.parentElement.querySelector(".dt-text");
+        tx.textContent = n || "날짜·시간 선택"; tx.classList.toggle("empty", !n);
+        const old = el.closest(".dt-field").querySelector(".dt-old");
+        if (old) old.remove();
+        regap();
+      };
+      el.addEventListener("input", paint); el.addEventListener("change", paint);
+      el.addEventListener("click", () => { try { el.showPicker(); } catch (e) { /* 지원 안 하면 기본 동작 */ } });
+    });
+    $$(".lg-to", box).forEach((el, i) => el.addEventListener("change", () => {
+      const next = $$(".lg-from", box)[i + 1];
+      if (next && !next.value.trim()) next.value = el.value.trim().toUpperCase(); // 다음 구간 출발 공항 = 이 구간 도착 공항
+      regap();
+    }));
+    $(`[data-leg-add="${dir}"]`, box).onclick = () => {
+      const cur = this.read(box), last = cur[cur.length - 1], end = this.ENDS[dir][1];
+      if (last.to === end) last.to = ""; // 경유지를 넣을 자리
+      cur.push({ from: last.to, to: end, airline: "", flight_no: "", dep_time: "", arr_time: "" });
+      this.mount(box, dir, cur);
+    };
+    $$("[data-leg-del]", box).forEach((b) => b.onclick = () => {
+      const cur = this.read(box), i = Number(b.dataset.legDel);
+      if (i === cur.length - 1) cur[i - 1].to = cur[i].to; else cur[i + 1].from = cur[i].from; // 경로가 끊기지 않게
+      cur.splice(i, 1);
+      this.mount(box, dir, cur);
+    });
+  }
+};
+
 const Prep = {
   editTrip() {
-    const t = S().trip, f = t.flights, h = t.hotel;
+    const t = S().trip, h = t.hotel;
     const inp = (id, val, ph, type) => `<input type="${type || "text"}" id="${id}" value="${esc(val)}" placeholder="${ph}">`;
     openModal(`
       <h2>출장 정보 입력</h2>
-      <h3>가는 편 (ICN → LAS)</h3>
-      <div class="row"><div><label class="field">항공사</label>${inp("tr-ob-al", f.outbound.airline, "예: 대한항공")}</div>
-      <div><label class="field">편명</label>${inp("tr-ob-no", f.outbound.flight_no, "예: KE005")}</div></div>
-      <div class="row"><div><label class="field">출발 (현지시간)</label>${inp("tr-ob-dep", f.outbound.dep_time, "2026-11-29 19:00", "text")}</div>
-      <div><label class="field">도착 (현지시간)</label>${inp("tr-ob-arr", f.outbound.arr_time, "2026-11-29 13:00", "text")}</div></div>
-      <h3>오는 편 (LAS → ICN)</h3>
-      <div class="row"><div><label class="field">항공사</label>${inp("tr-ib-al", f.inbound.airline, "예: 대한항공")}</div>
-      <div><label class="field">편명</label>${inp("tr-ib-no", f.inbound.flight_no, "예: KE006")}</div></div>
-      <div class="row"><div><label class="field">출발 (현지시간)</label>${inp("tr-ib-dep", f.inbound.dep_time, "2026-12-05 11:00", "text")}</div>
-      <div><label class="field">도착 (현지시간)</label>${inp("tr-ib-arr", f.inbound.arr_time, "2026-12-06 16:00", "text")}</div></div>
+      <h3>✈️ 가는 편</h3>
+      <div id="tr-legs-outbound"></div>
+      <h3>✈️ 오는 편</h3>
+      <div id="tr-legs-inbound"></div>
+      <p class="muted" style="font-size:12px;margin:0 0 8px;">시각은 각 공항의 현지 시각이에요 (탑승권에 적힌 그대로).</p>
       <h3>호텔</h3>
       <label class="field">호텔명</label>${inp("tr-ht-name", h.name, "예: The Venetian")}
       <label class="field" for="tr-ht-near">숙소에서 가까운 베뉴 <span class="muted">(아침·저녁 이동 계산용)</span></label>
@@ -610,10 +709,10 @@ const Prep = {
       <label class="field">주소</label>${inp("tr-ht-addr", h.address, "선택")}
       <button class="btn block" id="tr-save">저장</button>
       <button class="btn ghost block" id="tr-cancel">취소</button>`);
+    ["outbound", "inbound"].forEach((dir) => Flights.mount($("#tr-legs-" + dir), dir, Flights.legs(dir).map((l) => ({ ...l }))));
     $("#tr-save").onclick = () => {
       const g = (id) => $("#" + id).value.trim();
-      f.outbound = { airline: g("tr-ob-al"), flight_no: g("tr-ob-no"), dep_time: g("tr-ob-dep"), arr_time: g("tr-ob-arr"), terminal: "" };
-      f.inbound = { airline: g("tr-ib-al"), flight_no: g("tr-ib-no"), dep_time: g("tr-ib-dep"), arr_time: g("tr-ib-arr"), terminal: "" };
+      ["outbound", "inbound"].forEach((dir) => Flights.save(dir, Flights.read($("#tr-legs-" + dir))));
       t.hotel = { name: g("tr-ht-name"), check_in: g("tr-ht-in"), check_out: g("tr-ht-out"), address: g("tr-ht-addr"), near_venue: g("tr-ht-near") };
       Store.save(); closeModal(); Views.guide(); toast("출장 정보를 저장했어요");
     };

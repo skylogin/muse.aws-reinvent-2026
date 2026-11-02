@@ -136,6 +136,14 @@ test("merge: trip merges per field", () => {
   const { state } = Sync.merge(A.s, snap(B.s), { cfg: CFG });
   eq(state.trip.hotel, { name: "Wynn", check_in: "2026-11-29" }, "both fields");
 });
+test("merge: flight legs of one direction move as a whole (no mixed routes)", () => {
+  const leg = (from, to, no) => ({ from, to, airline: "", flight_no: no, dep_time: "", arr_time: "" });
+  const trip = (legs) => ({ hotel: { name: "", check_in: "" }, flights: { outbound: { flight_no: "", legs } } });
+  const A = device({ trip: trip([leg("ICN", "LAS", "KE005")]) }).edit((s) => { s.trip.flights.outbound.legs = [leg("ICN", "SFO", "KE023"), leg("SFO", "LAS", "UA1")]; }, 100);
+  const B = device({ trip: trip([leg("ICN", "LAS", "KE005")]) }).edit((s) => { s.trip.flights.outbound.legs[0].flight_no = "OZ202"; }, 200);
+  const { state } = Sync.merge(A.s, snap(B.s), { cfg: CFG });
+  eq(state.trip.flights.outbound.legs.map((l) => l.from + "-" + l.to), ["ICN-LAS"], "later device's whole route");
+});
 test("merge: local-only keys keep local values", () => {
   const A = device({ theme: "dark", text_scale: 1.25 });
   const B = device({ theme: "light", text_scale: 1 });

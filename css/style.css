@@ -248,6 +248,26 @@ label.field { font-size: 13px; font-weight: 600; color: var(--muted); }
 .row > * { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .row label.field { margin-bottom: 6px; }
 .row input { width: 100%; }
+/* 날짜·시간 칸: 기기 선택기(투명 input)를 덮어 두고, 보이는 글자는 항상 YYYY-MM-DD HH:MM */
+.dt-field { margin: 4px 0 10px; }
+.dt-pick { position: relative; display: block; }
+.dt-pick .dt-text { display: block; padding: 10px 12px; min-height: 46px; line-height: 1.6; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--input-bg); color: var(--text); font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.dt-pick .dt-text.empty { color: var(--muted); }
+.dt-pick input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; opacity: 0; cursor: pointer; }
+.dt-pick:focus-within .dt-text { outline: 2px solid var(--focus); outline-offset: -1px; border-color: transparent; }
+.dt-old { display: block; font-size: 12px; margin-top: 4px; }
+@media (max-width: 480px) { .dt-row { flex-direction: column; gap: 0; } } /* 폰: 두 칸이면 'YYYY-MM-DD HH:MM'이 잘림 */
+/* 비행편 구간 */
+.leg-card { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px 0; margin: 6px 0; }
+.leg-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 14px; }
+.leg-card .lg-from, .leg-card .lg-to { text-transform: uppercase; }
+.leg-gap { font-size: 13px; color: var(--muted); margin: 2px 0 2px 12px; }
+.leg-gap:empty { display: none; }
+.leg-gap.bad { color: var(--st-bad); font-weight: 600; }
+.leg-line { margin: 4px 0 6px; font-size: 14px; }
+.leg-times { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.leg-times .nw { white-space: nowrap; }
 
 /* ---------- overlays / sheets ---------- */
 .overlay { position: fixed; inset: 0; z-index: 100; background: rgba(5,10,22,.65);
