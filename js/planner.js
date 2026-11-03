@@ -140,14 +140,20 @@ const Planner = {
     return { minutes, mode, icon, label, maps, km, walkMin, walkMaps: dir("walking"),
       ride, buffer: ride == null ? null : this.RIDE_BUFFER, walkRide: walkMin - this.WALK_BUFFER, walkBuffer: this.WALK_BUFFER };
   },
-  /* 이 날의 이동 구간: 각 일정마다 '그 전에 끝나는 일정 중 가장 늦게 끝나는 것'에서 출발한다고 봄 */
+  /* 이 날의 이동 구간: 각 일정마다 '그 전에 끝나는 일정 중 가장 늦게 끝나는 것'에서 출발한다고 봄.
+     한 일정에서는 그다음 가장 먼저 시작하는 일정으로만 감 — 나머지는 그 일정 도중에 시작해서 실제 이동이 아니고, 칩도 같은 자리에 겹침 */
   legsFor(date, list) {
     list = list || this.timedFor(date);
+    const preds = list.map((b, i) => {
+      let p = null;
+      list.forEach((a, j) => { if (j !== i && a.e <= b.s && a.s < b.s && (!p || a.e > p.e)) p = a; });
+      return p;
+    });
     const legs = [];
     list.forEach((b, i) => {
-      let pred = null;
-      list.forEach((a, j) => { if (j !== i && a.e <= b.s && a.s < b.s && (!pred || a.e > pred.e)) pred = a; });
+      const pred = preds[i];
       if (!pred) return;
+      if (list.some((c, k) => k !== i && preds[k] === pred && (c.s < b.s || (c.s === b.s && k < i)))) return;
       const tr = this.travelBetween(pred.it, b.it);
       if (!tr) return;
       const gap = b.s - pred.e, slack = gap - tr.minutes;
