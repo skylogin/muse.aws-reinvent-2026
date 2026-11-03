@@ -31,6 +31,7 @@ const VENUE_COLORS = [
   ["#fef3c7", "#f59e0b", "#4d3a1e", "#fbbf24"]  // Wynn
 ];
 const FIXED_COLOR = ["#f1f5f9", "#94a3b8", "#2a3444", "#64748b"];
+const MINE_COLOR = ["#fae8ff", "#d946ef", "#4a1d4f", "#e879f9"]; // 개인 일정
 
 const Planner = {
   venueColorIdx(venue) {
@@ -44,10 +45,10 @@ const Planner = {
     if (v.includes("encore")) return 2;
     return -1;
   },
-  venueBlockStyle(venue, isFixed) {
+  venueBlockStyle(venue, isFixed, isMine) {
     const dark = document.documentElement.dataset.theme === "dark";
-    let c = FIXED_COLOR;
-    if (!isFixed) {
+    let c = isMine ? MINE_COLOR : FIXED_COLOR;
+    if (!isFixed && !isMine) {
       const idx = this.venueColorIdx(venue);
       if (idx >= 0) c = VENUE_COLORS[idx];
     }
@@ -63,6 +64,7 @@ const Planner = {
         const edit = (S().fixed_edits || {})[f.id];
         items.push({ kind: "fixed", ...f, ...(edit || {}) });
       });
+    (S().my_events || []).filter((e) => e.date === date).forEach((e) => items.push({ kind: "mine", ...e }));
     (S().daily_plan[date] || []).forEach((p) => {
       const s = this.sessionById(p.session_id);
       if (s) items.push({ kind: "session", ...s, note: p.note });
@@ -279,7 +281,7 @@ const Planner = {
     const list = mine.concat(peerList).sort((a, b) => a.s - b.s || b.e - a.e);
     const PX = 1.4, PAD = 12, GUTTER = 46; // PX: 1분당 픽셀, PAD: 맨 위·아래 시간 라벨 여백
     if (!list.length) return `<div class="empty-state"><div class="big">🗓️</div><p>이 날의 일정이 비어 있어요.<br>세션 탭에서 관심 세션을 담아보세요.</p>
-      <button class="btn ghost small" id="pl-go-sessions">세션 둘러보기</button></div>`;
+      <button class="btn ghost small" id="pl-go-sessions">세션 둘러보기</button> <button class="btn ghost small" id="pl-add-mine">＋ 개인 일정 추가</button></div>`;
 
     // 이른 아침·밤 일정도 잘리지 않게 표시 범위를 넓힘 (정시 단위)
     let START = 8 * 60, END = 20 * 60;
@@ -323,7 +325,7 @@ const Planner = {
       const place = [it.venue, room].filter(Boolean).join(" · ");
       // 글자를 그릴 수 있는 높이 (위에 겹친 일정 전까지) → 들어가는 만큼만 표시
       let rest = Math.min(hgt - (reserve[this.itemId(it)] || 0), Math.round((b.textEnd - b.s) * PX) - 2) - 10 - LT;
-      const title = (isFixed ? "📌 " : "") + (peer ? `[${peer.name}] ` : "") + (it.title || "");
+      const title = (isFixed ? "📌 " : it.kind === "mine" ? "🙋 " : "") + (peer ? `[${peer.name}] ` : "") + (it.title || "");
       const needLines = Math.max(1, Math.ceil(this.measure(title, "700 13px") / Math.max(boxW, 30) * 1.08));
       const kstInline = kst && this.measure(`${time} · 🇰🇷${kst}`, "600 11.5px") <= boxW;
       const show = { time: false, kst: false, place: false, note: false };
@@ -335,9 +337,9 @@ const Planner = {
       if (note && rest >= LM) { show.note = true; rest -= LM; }
       const z = 2 + b.depth * 4 + (b.order % 4);
       const pc = peer ? Share.color(peer) : null;
-      const style = peer ? `--pc:${pc.line};--pbg:${pc.bg};` : this.venueBlockStyle(it.venue, isFixed);
+      const style = peer ? `--pc:${pc.line};--pbg:${pc.bg};` : this.venueBlockStyle(it.venue, isFixed, it.kind === "mine");
       const withP = it.kind === "session" ? Share.withPeers(it.session_id, date) : [];
-      html += `<div class="tt-block${b.depth ? " nested" : ""}${isFixed ? " fixed" : ""}${peer ? " peer" : ""}" ${peer ? `data-peeritem="${esc(peer.id + "|" + it.session_id)}"` : `data-pitem="${esc(this.itemId(it))}"`}
+      html += `<div class="tt-block${b.depth ? " nested" : ""}${isFixed ? " fixed" : ""}${it.kind === "mine" ? " mine" : ""}${peer ? " peer" : ""}" ${peer ? `data-peeritem="${esc(peer.id + "|" + it.session_id)}"` : `data-pitem="${esc(this.itemId(it))}"`}
         style="top:${top}px;height:${hgt}px;left:${left};width:${width};z-index:${z};${style}" role="button" tabindex="0">
         ${withP.length ? `<span class="tt-with" title="${esc(withP.map((p) => p.name).join(", "))}도 담음">${withP.map((p) => Share.dotHTML(p)).join("")}</span>` : ""}
         <div class="tt-title" style="-webkit-line-clamp:${lines}">${peer ? `<span class="peer-tag">${esc(peer.name)}</span>` : ""}${esc(peer ? it.title : title)}</div>
@@ -462,12 +464,12 @@ const Planner = {
           <span class="chev">›</span></button>`;
       }
       const it = x.it, idx = this.venueColorIdx(it.venue);
-      const c = it.kind === "fixed" ? FIXED_COLOR : idx >= 0 ? VENUE_COLORS[idx] : FIXED_COLOR;
+      const c = it.kind === "fixed" ? FIXED_COLOR : it.kind === "mine" ? MINE_COLOR : idx >= 0 ? VENUE_COLORS[idx] : FIXED_COLOR;
       const clash = conflicts.some(([a, b]) => a === x || b === x);
       html += `<div class="route-stop" data-pitem="${esc(this.itemId(it))}" role="button" tabindex="0">
         <span class="rs-time">${this.hhmm(x.s)}<small>${this.hhmm(x.e)}</small></span>
         <span class="rs-dot" style="border-color:${dark ? c[3] : c[1]}"></span>
-        <span class="rs-body"><b>${esc(it.venue || "장소 미정")}</b><span class="muted">${it.kind === "fixed" ? "📌 " : ""}${esc(it.title)}</span>
+        <span class="rs-body"><b>${esc(it.venue || "장소 미정")}</b><span class="muted">${it.kind === "fixed" ? "📌 " : it.kind === "mine" ? "🙋 " : ""}${esc(it.title)}</span>
           ${clash ? `<span class="badge danger" style="margin-top:3px;">⚠️ 다른 세션과 시간 겹침</span>` : ""}</span>
       </div>`;
     });
@@ -557,6 +559,7 @@ const Planner = {
     const it = this.itemsFor(date).find((x) => this.itemId(x) === id);
     if (!it) return;
     const dismiss = () => { const ov = $("#modal-overlay"); if (ov) ov._dismiss(); };
+    if (it.kind === "mine") { MyEvents.open(date, it.id); return; }
 
     if (it.kind === "fixed") {
       const base = FIXED_EVENTS.find((f) => f.id === it.id) || it;
@@ -742,7 +745,7 @@ const Planner = {
         else if (x.s > nowMin) tag = `<span class="up-tag${x.s - nowMin <= 30 ? " soon" : ""}">${x.s - nowMin < 60 ? `${x.s - nowMin}분 후` : `${this.dur(x.s - nowMin)} 후`}</span>`;
       }
       const r = it.kind === "session" ? (S().reservations[id] || {}).status : "";
-      const resBadge = r === "reserved" ? `<span class="badge ok">예약됨</span>` : r === "waitlist" ? `<span class="badge warn">대기</span>` : it.kind === "session" ? `<span class="badge">미예약</span>` : `<span class="badge warn">고정</span>`;
+      const resBadge = r === "reserved" ? `<span class="badge ok">예약됨</span>` : r === "waitlist" ? `<span class="badge warn">대기</span>` : it.kind === "session" ? `<span class="badge">미예약</span>` : it.kind === "mine" ? `<span class="badge info">개인</span>` : `<span class="badge warn">고정</span>`;
       const l = legInto.get(id);
       const legRow = i > 0 && l && !(l.tr.same && l.status === "ok")
         ? `<div class="up-leg st-${l.status}">${l.tr.icon} ${esc(l.tr.same ? "건물 내 이동" : `${shortVenue(l.a.it.venue)} → ${shortVenue(it.venue)}`)} ${l.tr.minutes}분 · ${esc(this.legStatusText(l))}${l.status !== "bad" ? ` · ${this.hhmm(l.leaveBy)}까지 출발` : ""}</div>` : "";
@@ -905,7 +908,7 @@ const Planner = {
               const kst = kstRange(d, it.start || it.start_time, it.end || it.end_time);
               return `<div class="report-item">
                 <div class="report-time">${esc(time)}</div>
-                <div class="report-title">${it.kind === "fixed" ? `<span class="badge warn">고정</span> ` : ""}${esc(it.title)}</div>
+                <div class="report-title">${it.kind === "fixed" ? `<span class="badge warn">고정</span> ` : it.kind === "mine" ? `<span class="badge info">개인</span> ` : ""}${esc(it.title)}</div>
                 ${it.venue ? `<div class="report-venue">📍 ${esc(it.venue)}</div>` : ""}
                 ${kst ? `<div class="report-venue">🇰🇷 ${kst}</div>` : ""}
               </div>`;
@@ -971,12 +974,17 @@ Views.planner = function () {
     </div>`;
       return Layout.size() === "expanded" ? `<div class="pl-cols"><div class="pl-main">${tl}</div><div class="pl-side">${rc}</div></div>` : tl + rc;
     })()}
-    </div>`;
+    </div>
+    <button id="pl-fab" class="fab fab-text" aria-label="개인 일정 추가">＋</button>`;
+  el.classList.add("has-fab");
   $$("#view-planner [data-day]").forEach((b) => b.onclick = () => { plannerManual = true; plannerDay = b.dataset.day; Views.planner(); });
   const act = $("#view-planner .day-tabs .active");
   if (act) act.scrollIntoView({ block: "nearest", inline: "center" });
   const goS = $("#pl-go-sessions");
   if (goS) goS.onclick = () => switchTab("sessions");
+  $("#pl-fab").onclick = () => MyEvents.open(plannerDay);
+  const addM = $("#pl-add-mine");
+  if (addM) addM.onclick = () => MyEvents.open(plannerDay);
   $("#ri-guide").onclick = () => { Guide.next = "local"; switchTab("guide"); };
   $("#pl-more").onclick = () => Planner.openMore();
   const rv = $("#pl-reserve");
@@ -1002,6 +1010,66 @@ Views.planner = function () {
     const [from, to, near] = b.dataset.gap.split("|");
     Suggest.openGap(plannerDay, Number(from), Number(to), near);
   });
+};
+
+/* 🙋 개인 일정: 투어·식사·미팅처럼 세션이 아닌 일정과 실제로 한 일 (S().my_events)
+   시간표·동선·홈·일별 보고서·ICS에 함께 나오고, 동료 공유·출장 보고서에는 넣지 않음 */
+const MyEvents = {
+  /* 시각 칸: 기기 선택기로 고르고 칸에는 HH:MM (24시간제) */
+  timeHTML(id, v) {
+    return `<div class="dt-field ${id}-wrap"><label class="dt-pick"><span class="dt-text${v ? "" : " empty"}">${v || "시간 선택"}</span>
+      <input type="time" id="${id}" value="${esc(v || "")}"></label></div>`;
+  },
+  /* id 없으면 추가, 있으면 수정 (date: 추가할 때 기본 날짜) */
+  open(date, id) {
+    const cur = id ? (S().my_events || []).find((e) => e.id === id) : null;
+    const v = cur || { date: DAYS.includes(date) ? date : DAYS[1], start: "", end: "", title: "", venue: "", note: "" };
+    const venues = [...new Set(allSessions().map((s) => s.venue).concat(EXTRA_VENUES.map((x) => x.name)).filter(Boolean))].sort();
+    openSheet({
+      title: cur ? "🙋 개인 일정" : "🙋 개인 일정 추가",
+      body: `
+        <label class="field" for="me-title">제목 *</label>
+        <input type="text" id="me-title" maxlength="60" value="${esc(v.title)}" placeholder="예: 그랜드캐년 투어, 팀 저녁">
+        <label class="field" for="me-date">날짜</label>
+        <select id="me-date">${DAYS.map((d) => `<option value="${d}"${d === v.date ? " selected" : ""}>${esc(dayLabel(d))}</option>`).join("")}</select>
+        <div class="row">
+          <div><label class="field" for="me-start">시작 *</label>${this.timeHTML("me-start", v.start)}</div>
+          <div><label class="field" for="me-end">종료 *</label>${this.timeHTML("me-end", v.end)}</div>
+        </div>
+        <label class="field" for="me-venue">장소 <span class="muted">(베뉴면 이동 시간도 계산)</span></label>
+        <input type="text" id="me-venue" list="me-venues" maxlength="80" value="${esc(v.venue || "")}" placeholder="선택">
+        <datalist id="me-venues">${venues.map((x) => `<option value="${esc(x)}">`).join("")}</datalist>
+        <label class="field" for="me-note">메모 <span class="muted">(한 일·느낀 점)</span></label>
+        <textarea id="me-note" rows="3" maxlength="1000" placeholder="예: 헬기 투어, 사진 많이 찍음">${esc(v.note || "")}</textarea>
+        ${cur ? `<div class="sheet-links"><button class="link-btn danger" type="button" id="me-del">이 일정 삭제</button></div>` : ""}`,
+      actions: `<button class="btn ghost" id="me-close">닫기</button><button class="btn" id="me-save">저장</button>`
+    });
+    $$("#modal-overlay .dt-pick input").forEach((el) => {
+      const paint = () => { const tx = el.parentElement.querySelector(".dt-text"); tx.textContent = el.value || "시간 선택"; tx.classList.toggle("empty", !el.value); };
+      el.addEventListener("input", paint); el.addEventListener("change", paint);
+      el.addEventListener("click", () => { try { el.showPicker(); } catch (e) { /* 지원 안 하면 기본 동작 */ } });
+    });
+    const done = (day, msg) => { closeModal(); plannerManual = true; plannerDay = day; if (currentTab === "planner") Views.planner(); toast(msg); };
+    $("#me-close").onclick = () => $("#modal-overlay")._dismiss();
+    $("#me-save").onclick = () => {
+      const g = (k) => $("#me-" + k).value.trim();
+      const e = { id: cur ? cur.id : "me" + Date.now().toString(36), date: g("date"), start: g("start"), end: g("end"), title: g("title"), venue: g("venue"), note: g("note") };
+      if (!e.title) { toast("제목을 적어 주세요"); $("#me-title").focus(); return; }
+      if (!e.start || !e.end) { toast("시작·종료 시각을 골라 주세요"); return; }
+      if (e.end <= e.start) { toast("종료가 시작보다 늦어야 해요"); return; }
+      S().my_events = S().my_events || [];
+      const i = S().my_events.findIndex((x) => x.id === e.id);
+      if (i >= 0) S().my_events[i] = e; else S().my_events.push(e);
+      Store.save();
+      done(e.date, cur ? "수정했어요" : "개인 일정을 추가했어요 🙋");
+    };
+    const del = $("#me-del");
+    if (del) del.onclick = () => {
+      if (!confirm("이 개인 일정을 지울까요?")) return;
+      S().my_events = S().my_events.filter((x) => x.id !== cur.id); Store.save();
+      done(cur.date, "지웠어요");
+    };
+  }
 };
 
 /* 좌우로 밀어 날짜 이동: 그날 내용(.pl-day)이 손가락을 따라가다 넘어감.

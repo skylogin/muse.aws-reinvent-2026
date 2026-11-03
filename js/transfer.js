@@ -24,7 +24,7 @@ const SYNC_LABELS = {
   favorites: "관심 세션", daily_plan: "내 일정", reservations: "예약 상태", backups: "대체 세션", session_notes: "세션 메모",
   expenses: "지출", checklist: "준비물", depart_done: "출발 전 할 일", fixed_off: "고정 일정", fixed_edits: "고정 일정",
   peers: "동료 일정", news: "발표 메모", expo_booths: "Expo 부스", trip: "출장 정보", profile: "프로필", fx_rate: "환율", budget_usd: "예산",
-  people: "만난 사람", trip_report: "출장 보고서", expense_rule: "정산 규정"
+  people: "만난 사람", trip_report: "출장 보고서", expense_rule: "정산 규정", my_events: "개인 일정"
 };
 
 const Transfer = {

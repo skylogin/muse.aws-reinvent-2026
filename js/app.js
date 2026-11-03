@@ -210,6 +210,7 @@ function defaultState() {
     show_kr_hours: true, // 시간표에 한국 업무시간 표시
     news: [],           // 신규 발표 메모 [{id, title, q, at}]
     expo_booths: [],    // Expo 부스 스탬프 [{id, name, note, visited, visited_at}]
+    my_events: [],      // 개인 일정 [{id, date, start, end, title, venue, note}] (투어·식사 등, 동료 공유·보고서에는 안 넣음)
     people: [],         // 만난 사람 [{id, name, company, role, topic, follow_up, follow_done, contact, met_at}]
     trip_report: { summary: "", actions: "", include_people: false }, // 출장 결과 보고서의 직접 쓰는 칸
     expense_rule: "",   // 회사 정산 규정 메모 (정산 탭에 표시)

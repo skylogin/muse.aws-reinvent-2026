@@ -136,6 +136,12 @@ test("merge: trip merges per field", () => {
   const { state } = Sync.merge(A.s, snap(B.s), { cfg: CFG });
   eq(state.trip.hotel, { name: "Wynn", check_in: "2026-11-29" }, "both fields");
 });
+test("merge: personal events added on each device are both kept", () => {
+  const A = device({ my_events: [] }).edit((s) => s.my_events.push({ id: "me1", date: "2026-12-01", start: "13:00", end: "17:00", title: "투어" }), 100);
+  const B = device({ my_events: [] }).edit((s) => s.my_events.push({ id: "me2", date: "2026-12-02", start: "19:00", end: "21:00", title: "저녁" }), 200);
+  const { state } = Sync.merge(A.s, snap(B.s), { cfg: CFG });
+  eq(state.my_events.map((e) => e.id), ["me1", "me2"], "both events kept");
+});
 test("merge: flight legs of one direction move as a whole (no mixed routes)", () => {
   const leg = (from, to, no) => ({ from, to, airline: "", flight_no: no, dep_time: "", arr_time: "" });
   const trip = (legs) => ({ hotel: { name: "", check_in: "" }, flights: { outbound: { flight_no: "", legs } } });
