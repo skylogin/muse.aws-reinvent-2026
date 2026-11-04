@@ -1,12 +1,14 @@
 /* 내 일정 탭: 스마트 플래너 — 타임라인, 이동 계산, 고정 이벤트, 메모, ICS */
 "use strict";
 
-const DAYS = ["2026-11-29", "2026-11-30", "2026-12-01", "2026-12-02", "2026-12-03", "2026-12-04", "2026-12-05"];
+/* 11/27(금)·11/28(토)는 행사 전 — 투어·이동 같은 개인 일정용 */
+const DAYS = ["2026-11-27", "2026-11-28", "2026-11-29", "2026-11-30", "2026-12-01", "2026-12-02", "2026-12-03", "2026-12-04", "2026-12-05"];
+const DAY_ONE = "2026-11-29"; // 배지 수령·킥오프 — 출장 전에는 이 날을 먼저 보여 줌
 let plannerDay = null;
 let plannerManual = false; // true면 사용자가 직접 고른 날짜 유지
 function todayClamped() {
   const t = vegasDateStr();
-  if (t < DAYS[0]) return DAYS[0];
+  if (t < DAYS[0]) return DAY_ONE;
   if (t > DAYS[DAYS.length - 1]) return DAYS[DAYS.length - 1];
   return t;
 }
@@ -286,7 +288,10 @@ const Planner = {
     }).filter((x) => x.s != null);
     const list = mine.concat(peerList).sort((a, b) => a.s - b.s || b.e - a.e);
     const PX = 1.4, PAD = 12, GUTTER = 46; // PX: 1분당 픽셀, PAD: 맨 위·아래 시간 라벨 여백
-    if (!list.length) return `<div class="empty-state"><div class="big">🗓️</div><p>이 날의 일정이 비어 있어요.<br>세션 탭에서 관심 세션을 담아보세요.</p>
+    if (!list.length) return date < DAY_ONE
+      ? `<div class="empty-state"><div class="big">🧳</div><p>행사 전날이에요.<br>투어·이동 같은 개인 일정을 넣어 보세요.</p>
+      <button class="btn ghost small" id="pl-add-mine">＋ 개인 일정 추가</button></div>`
+      : `<div class="empty-state"><div class="big">🗓️</div><p>이 날의 일정이 비어 있어요.<br>세션 탭에서 관심 세션을 담아보세요.</p>
       <button class="btn ghost small" id="pl-go-sessions">세션 둘러보기</button> <button class="btn ghost small" id="pl-add-mine">＋ 개인 일정 추가</button></div>`;
 
     // 이른 아침·밤 일정도 잘리지 않게 표시 범위를 넓힘 (정시 단위)
@@ -1029,7 +1034,7 @@ const MyEvents = {
   /* id 없으면 추가, 있으면 수정 (date: 추가할 때 기본 날짜) */
   open(date, id) {
     const cur = id ? (S().my_events || []).find((e) => e.id === id) : null;
-    const v = cur || { date: DAYS.includes(date) ? date : DAYS[1], start: "", end: "", title: "", venue: "", note: "" };
+    const v = cur || { date: DAYS.includes(date) ? date : DAY_ONE, start: "", end: "", title: "", venue: "", note: "" };
     const venues = [...new Set(allSessions().map((s) => s.venue).concat(EXTRA_VENUES.map((x) => x.name)).filter(Boolean))].sort();
     openSheet({
       title: cur ? "🙋 개인 일정" : "🙋 개인 일정 추가",
