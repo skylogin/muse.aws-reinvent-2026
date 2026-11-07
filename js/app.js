@@ -255,7 +255,7 @@ const FIXED_EVENTS = [
   { id: "badge-air", date: "2026-11-29", start: "07:00", end: "23:59", title: "배지 수령", venue: "Harry Reid 공항 T1·T3", note: "공항 도착 시 수령 가능", src: "guide", allday: true },
   { id: "badge-venue", date: "2026-11-29", start: "10:00", end: "20:00", title: "배지 수령", venue: "MGM Grand · The Venetian", note: "", src: "guide", allday: true },
   { id: "kickoff", date: "2026-11-29", start: "10:00", end: "18:00", title: "킥오프 액티비티", venue: "Caesars Forum · The Venetian", note: "SWAG 수령·주간 계획", src: "guide", allday: true },
-  { id: "badge-mon", date: "2026-11-30", start: "06:30", end: "07:30", title: "배지 수령", venue: "The Venetian", note: "그랜드캐년 투어 복귀(11/29 20:00) 때문에 일요일 수령 불가 → 월요일 아침 수령. 여권 지참", src: "guide" },
+  { id: "badge-mon", date: "2026-11-30", start: "06:30", end: "07:30", title: "배지 수령", venue: "MGM Grand · The Venetian", note: "그랜드캐년 투어 복귀(11/29 20:00) 때문에 일요일 수령 불가 → 월요일 아침 수령. 여권 지참", src: "guide" },
   { id: "expo-welcome", date: "2026-11-30", start: "16:00", end: "19:00", title: "Expo 웰컴 리셉션", venue: "The Venetian", note: "450+ 파트너·AWS 전문가 부스", src: "official" },
   { id: "expo-happy", date: "2026-12-02", start: "16:30", end: "18:00", title: "Expo 해피아워", venue: "The Venetian", note: "", src: "official" },
   { id: "replay", date: "2026-12-03", start: "18:30", end: "22:30", title: "re:Play 파티", venue: "Allegiant Stadium", note: "야외 — 방한·귀마개 필수 · re:Play 셔틀 18:15–23:00", src: "official" }
